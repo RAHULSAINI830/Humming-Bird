@@ -1,0 +1,17 @@
+{
+  "name": "rango",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Authentication and role-based company access foundation for Rango.",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "stop": "pkill -f \"node src/server.js\" || true; pkill -f \"node --watch src/server.js\" || true",
+    "restart": "npm run stop && npm start",
+    "db:reset": "npm run stop && rm -f data/rango.sqlite && node src/server.js --init-only"
+  },
+  "engines": {
+    "node": ">=25"
+  }
+}
