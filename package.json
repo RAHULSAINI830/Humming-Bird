@@ -1,8 +1,8 @@
 {
-  "name": "rango",
+  "name": "hummingbird",
   "version": "0.1.0",
   "private": true,
-  "description": "Authentication and role-based company access foundation for Rango.",
+  "description": "Authentication and role-based company access foundation for Hummingbird.",
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",

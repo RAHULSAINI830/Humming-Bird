@@ -246,7 +246,7 @@ function buildBusinessAnalysisPrompt(company, websiteSnapshot) {
     logo_url: String(company.logo_url || '').trim()
   };
 
-  return `You are Rango, a careful business intelligence analyst.
+  return `You are Hummingbird, a careful business intelligence analyst.
 
 Analyze this company using the provided company identity and the extracted website content.
 
@@ -343,7 +343,7 @@ function buildPromptGenerationPrompt(company, analysis) {
     }
   };
 
-  return `You are Rango, an AI visibility and GEO/AEO strategist.
+  return `You are Hummingbird, an AI visibility and GEO/AEO strategist.
 
 Create the top 15 realistic AI search prompts that potential buyers would ask ChatGPT, Gemini, Claude, Perplexity, or another answer engine when looking for a company like this.
 
@@ -353,7 +353,7 @@ Prompt goals:
 - Prompts should be related to the company's actual services, audience, industry, and buying journey.
 - Include discovery, comparison, problem-aware, solution-aware, local/service-area, pricing/value, and competitor-alternative style prompts where relevant.
 - Prompts must sound like real buyer questions.
-- Do not mention Rango.
+- Do not mention Hummingbird.
 - Do not invent unsupported services or locations.
 - If location is unknown, keep prompts location-neutral.
 - Keep each prompt clear and client-ready.
@@ -415,7 +415,7 @@ function buildCompetitorDiscoveryPrompt(company, analysis) {
     business_analysis: analysis || {}
   };
 
-  return `You are Rango, a competitive intelligence analyst.
+  return `You are Hummingbird, a competitive intelligence analyst.
 
 Identify related competitors for this company based on the provided saved company profile and business analysis.
 
@@ -529,9 +529,9 @@ ${JSON.stringify(context, null, 2)}`;
 }
 
 function buildAeoRecommendationsPrompt(context) {
-  return `You are Rango, an AEO/GEO strategy lead.
+  return `You are Hummingbird, an AEO/GEO strategy lead.
 
-Create a practical "what to do next" action plan for this brand using only saved Rango data.
+Create a practical "what to do next" action plan for this brand using only saved Hummingbird data.
 
 Use the provided saved business analysis, prompt checks, competitor mentions, citation recommendations, and dashboard metrics.
 
@@ -584,7 +584,7 @@ Return this exact JSON shape:
   ]
 }
 
-Saved Rango data:
+Saved Hummingbird data:
 ${JSON.stringify(context, null, 2)}`;
 }
 

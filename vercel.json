@@ -28,7 +28,8 @@
     },
     {
       "src": "/",
-      "redirect": "/app/"
+      "status": 307,
+      "headers": { "Location": "/app/" }
     }
   ]
 }

@@ -335,7 +335,21 @@ function initDatabase() {
   seedRoles();
   seedDemoData();
   cleanupDemoData();
+  normalizeInternalDeveloperWorkspace();
   seedDefaultDeveloper();
+}
+
+function normalizeInternalDeveloperWorkspace() {
+  db.prepare(`
+    UPDATE companies
+    SET
+      company_name = 'Hummingbird Internal',
+      website_url = 'https://hummingbird.local',
+      brand_description = 'Internal Hummingbird developer workspace.',
+      target_audience = 'Hummingbird internal team',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE company_name = 'Rango Internal'
+  `).run();
 }
 
 function seedDefaultDeveloper() {
@@ -350,10 +364,10 @@ function seedDefaultDeveloper() {
     return;
   }
 
-  const password = process.env.RANGO_DEVELOPER_PASSWORD;
+  const password = process.env.HUMMINGBIRD_DEVELOPER_PASSWORD || process.env.RANGO_DEVELOPER_PASSWORD;
 
   if (!password) {
-    console.warn('RANGO_DEVELOPER_PASSWORD is not set. Default Developer user was not created.');
+    console.warn('HUMMINGBIRD_DEVELOPER_PASSWORD is not set. Default Developer user was not created.');
     return;
   }
 
@@ -377,7 +391,11 @@ function seedDefaultDeveloper() {
       user = { id: Number(result.lastInsertRowid) };
     }
 
-    let company = db.prepare('SELECT id FROM companies WHERE company_name = ?').get('Rango Internal');
+    let company = db.prepare('SELECT id FROM companies WHERE company_name = ?').get('Hummingbird Internal');
+
+    if (!company) {
+      company = db.prepare('SELECT id FROM companies WHERE company_name = ?').get('Rango Internal');
+    }
 
     if (!company) {
       const result = db.prepare(`
@@ -396,18 +414,35 @@ function seedDefaultDeveloper() {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
       `).run(
-        'Rango Internal',
-        'https://rango.local',
+        'Hummingbird Internal',
+        'https://hummingbird.local',
         '',
         'SaaS',
         'Global',
         'United States',
         'Platform administration',
         '',
-        'Internal Rango developer workspace.',
-        'Rango internal team'
+        'Internal Hummingbird developer workspace.',
+        'Hummingbird internal team'
       );
       company = { id: Number(result.lastInsertRowid) };
+    } else {
+      db.prepare(`
+        UPDATE companies
+        SET
+          company_name = ?,
+          website_url = ?,
+          brand_description = ?,
+          target_audience = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        'Hummingbird Internal',
+        'https://hummingbird.local',
+        'Internal Hummingbird developer workspace.',
+        'Hummingbird internal team',
+        company.id
+      );
     }
 
     db.prepare(`
@@ -416,7 +451,7 @@ function seedDefaultDeveloper() {
     `).run(user.id, company.id, developerRole.id);
 
     db.exec('COMMIT');
-    console.log('Default Developer user created from RANGO_DEVELOPER_PASSWORD.');
+    console.log('Default Developer user created from HUMMINGBIRD_DEVELOPER_PASSWORD.');
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

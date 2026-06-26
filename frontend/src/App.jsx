@@ -182,9 +182,9 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <a className="sidebar-brand" href="#dashboard" onClick={() => setActiveView('dashboard')}>
-          <span className="brand-mark">R</span>
+          <span className="brand-mark">H</span>
           <span>
-            <strong>Rango</strong>
+            <strong>Hummingbird</strong>
             <small>AI visibility OS</small>
           </span>
         </a>
@@ -247,8 +247,8 @@ function LoadingScreen() {
   return (
     <main className="auth-page">
       <section className="loading-card">
-        <span className="brand-mark">R</span>
-        <h1>Loading Rango</h1>
+        <span className="brand-mark">H</span>
+        <h1>Loading Hummingbird</h1>
         <p>Connecting the React frontend to the backend API.</p>
         <div className="loading-bar"><span /></div>
       </section>
@@ -301,9 +301,9 @@ function SetupGenerationScreen({ session, setupStatus, loading, error, onAction,
       <section className="setup-gate-shell">
         <div className="setup-gate-header">
           <a className="sidebar-brand" href="#setup">
-            <span className="brand-mark">R</span>
+            <span className="brand-mark">H</span>
             <span>
-              <strong>Rango</strong>
+              <strong>Hummingbird</strong>
               <small>AI visibility OS</small>
             </span>
           </a>
@@ -315,7 +315,7 @@ function SetupGenerationScreen({ session, setupStatus, loading, error, onAction,
             <p className="eyebrow">Workspace preparation</p>
             <h1>Building your AI visibility platform</h1>
             <p>
-              Before showing the dashboard, Rango generates real business intelligence, competitors,
+              Before showing the dashboard, Hummingbird generates real business intelligence, competitors,
               prompts, and Gemini visibility checks for <strong>{session.selectedCompanyName}</strong>.
             </p>
 
@@ -494,10 +494,10 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
     <main className="auth-page">
       <section className="auth-hero">
         <div className="brand-row">
-          <span className="brand-mark">R</span>
-          <strong>Rango</strong>
+          <span className="brand-mark">H</span>
+          <strong>Hummingbird</strong>
         </div>
-        <h1>{isSignup ? 'Create your workspace.' : 'Welcome back to Rango.'}</h1>
+        <h1>{isSignup ? 'Create your workspace.' : 'Welcome back to Hummingbird.'}</h1>
         <p>
           Track AI visibility, prompts, competitor mentions, citations, and business intelligence from one premium workspace.
         </p>
@@ -518,8 +518,8 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
         <h2>{isSignup ? 'Start with your company' : 'Login to your dashboard'}</h2>
         <p className="muted">
           {isSignup
-            ? 'Create your Rango workspace. You will become the Business Owner.'
-            : 'Use your Rango account to continue your AI visibility workflow.'}
+            ? 'Create your Hummingbird workspace. You will become the Business Owner.'
+            : 'Use your Hummingbird account to continue your AI visibility workflow.'}
         </p>
 
         {error ? <div className="error-box">{error}</div> : null}
@@ -635,7 +635,7 @@ function Dashboard({ data, session, workspace, goTo }) {
           <p>
             {hasRealData
               ? `Combined score from real available provider data only: ${activeProviders.join(', ')}.`
-              : 'No provider response data has been saved yet. Rango will combine only real provider results when scans are available.'}
+              : 'No provider response data has been saved yet. Hummingbird will combine only real provider results when scans are available.'}
           </p>
         </div>
         <div className="dashboard-provider-stack">
@@ -661,7 +661,7 @@ function Dashboard({ data, session, workspace, goTo }) {
           <div>
             <p className="eyebrow">How to generate dashboard data</p>
             <h2>Your analytics dashboard will fill after prompt checks run.</h2>
-            <p>Rango does not use mock numbers. Complete the flow below and this page will populate from saved AI responses, mentions, competitors, and citations.</p>
+            <p>Hummingbird does not use mock numbers. Complete the flow below and this page will populate from saved AI responses, mentions, competitors, and citations.</p>
           </div>
           <div className="dashboard-guide-steps">
             <button type="button" onClick={() => goTo('business-analysis')}>1. Generate business analysis</button>
@@ -719,7 +719,7 @@ function Dashboard({ data, session, workspace, goTo }) {
         </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Rango optimization layer" action="Our intelligence">
+      <DashboardPanel title="Hummingbird optimization layer" action="Our intelligence">
         <div className="dashboard-insight-grid">
           {(visibility.insights || []).map((insight) => (
             <article className="dashboard-insight-card" key={insight.title}>
@@ -957,6 +957,17 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
   const latest = data?.latest;
   const summary = data?.summary || {};
   const prerequisites = data?.prerequisites || {};
+  const priorities = latest?.priorities || [];
+  const actions = latest?.action_plan || [];
+  const opportunities = latest?.content_opportunities || [];
+  const evidence = latest?.evidence || [];
+  const completePrereqs = [
+    prerequisites.analysisCompleted,
+    (prerequisites.competitors || 0) > 0,
+    (prerequisites.prompts || 0) > 0,
+    (prerequisites.checkedPrompts || 0) > 0
+  ].filter(Boolean).length;
+  const readiness = Math.round((completePrereqs / 4) * 100);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -979,11 +990,11 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
   }
 
   return (
-    <section className="page-content">
+    <section className="page-content aeo-page">
       <PageHeader
         eyebrow="What’s Next"
-        title="AEO action plan"
-        subtitle="Real next steps generated from saved analysis, prompt checks, competitor mentions, and citations."
+        title="What to focus on next"
+        subtitle="A real AEO growth plan generated from saved analysis, prompt checks, competitor mentions, and citations."
         workspace={workspace}
         action={data?.canGenerate ? (
           <button className="primary-button compact-action" type="button" onClick={generatePlan} disabled={loading}>
@@ -993,13 +1004,30 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
       />
 
       {message ? <div className={message.includes('generated') ? 'success-notice' : 'notice'}>{message}</div> : null}
+      {loading ? (
+        <div className="aeo-loading-layer">
+          <div className="aeo-loading-card">
+            <span><SettingsIcon name="sparkles" /></span>
+            <h2>Building your next-best actions</h2>
+            <p>Hummingbird is reading saved analysis, prompt checks, competitor gaps, and citation signals with Gemini.</p>
+            <div className="loading-bar"><span /></div>
+          </div>
+        </div>
+      ) : null}
 
       {!latest ? (
         <article className="aeo-empty-card">
           <div>
             <p className="eyebrow">Ready when your tracking data is ready</p>
             <h2>Generate a real AEO focus plan after checks are saved.</h2>
-            <p>Rango will use your stored Gemini business analysis, checked prompts, competitor mentions, and citation recommendations. No mock data is used.</p>
+            <p>Hummingbird will use your stored Gemini business analysis, checked prompts, competitor mentions, and citation recommendations. No mock data is used.</p>
+            <div className="aeo-readiness">
+              <div>
+                <span>Data readiness</span>
+                <strong>{readiness}%</strong>
+              </div>
+              <div className="progress-bar"><span style={{ width: `${readiness}%` }} /></div>
+            </div>
           </div>
           <div className="aeo-prereq-grid">
             <AeoPrereq label="Business analysis" done={prerequisites.analysisCompleted} value={prerequisites.analysisCompleted ? 'Complete' : 'Needed'} />
@@ -1020,6 +1048,7 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
                 <span className="pill status-completed">Stored result</span>
                 <span className="soft-pill">{latest.source_type || 'gemini'} · {latest.updated_at || latest.created_at}</span>
               </div>
+              <p className="aeo-hero-kicker">Recommended focus</p>
               <h2>{latest.focus_summary}</h2>
               <div className="aeo-score-row">
                 <AeoMiniMetric label="Visibility score" value={summary.visibilityScore === null || summary.visibilityScore === undefined ? 'No data' : `${summary.visibilityScore}%`} />
@@ -1033,11 +1062,20 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
               <i />
               <i />
               <i />
+              <b>Focus map</b>
             </div>
           </article>
 
+          <div className="aeo-section-intro">
+            <div>
+              <p className="eyebrow">Where to focus</p>
+              <h2>Priority moves ranked by Gemini from your saved data</h2>
+            </div>
+            <span>{priorities.length} focus areas</span>
+          </div>
+
           <div className="aeo-priority-grid">
-            {(latest.priorities || []).map((priority, index) => (
+            {priorities.map((priority, index) => (
               <article className="aeo-priority-card" key={`${priority.title}-${index}`}>
                 <div className="aeo-card-top">
                   <span>0{index + 1}</span>
@@ -1056,10 +1094,15 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
 
           <div className="aeo-main-grid">
             <article className="aeo-plan-card">
-              <p className="eyebrow">How to focus</p>
-              <h2>Execution plan</h2>
+              <div className="aeo-card-heading">
+                <div>
+                  <p className="eyebrow">How to focus</p>
+                  <h2>Execution plan</h2>
+                </div>
+                <span>{actions.length} actions</span>
+              </div>
               <div className="aeo-timeline">
-                {(latest.action_plan || []).map((action, index) => (
+                {actions.map((action, index) => (
                   <div className="aeo-timeline-item" key={`${action.step}-${index}`}>
                     <span>{action.priority}</span>
                     <div>
@@ -1073,9 +1116,13 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
             </article>
 
             <article className="aeo-evidence-card">
-              <p className="eyebrow">Why these steps</p>
-              <h2>Evidence from saved data</h2>
-              {(latest.evidence || []).map((item, index) => (
+              <div className="aeo-card-heading">
+                <div>
+                  <p className="eyebrow">Why these steps</p>
+                  <h2>Evidence from saved data</h2>
+                </div>
+              </div>
+              {evidence.map((item, index) => (
                 <div className="aeo-evidence-row" key={`${item.metric}-${index}`}>
                   <SettingsIcon name={index % 2 ? 'chart' : 'checkCircle'} />
                   <div>
@@ -1093,13 +1140,13 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
                 <p className="eyebrow">Content opportunities</p>
                 <h2>Pages/prompts to improve AEO visibility</h2>
               </div>
-              <span>Real prompt evidence</span>
+              <span>{opportunities.length} opportunities</span>
             </div>
             <div className="table-panel embedded">
               <table>
                 <thead><tr><th>Topic</th><th>Target prompt</th><th>Page type</th><th>Reason</th></tr></thead>
                 <tbody>
-                  {(latest.content_opportunities || []).map((item, index) => (
+                  {opportunities.map((item, index) => (
                     <tr key={`${item.topic}-${index}`}>
                       <td><strong>{item.topic}</strong></td>
                       <td>{item.target_prompt}</td>
@@ -2329,7 +2376,7 @@ function TablePage({ title, subtitle, children }) {
 function ComingSoon({ title }) {
   return (
     <section className="empty-state">
-      <span className="brand-mark">R</span>
+            <span className="brand-mark">H</span>
       <p className="eyebrow">Coming soon</p>
       <h1>{title}</h1>
       <p>This React page shell is ready. We can move this module from backend logic into frontend components next.</p>

@@ -1475,7 +1475,7 @@ async function router(req, res) {
 
   try {
     if (req.method === 'GET' && url.pathname === '/api/health') {
-      return sendJson(res, { ok: true, app: 'rango', layer: 'backend-api', database: dbPath });
+      return sendJson(res, { ok: true, app: 'hummingbird', layer: 'backend-api', database: dbPath });
     }
 
     if (req.method === 'GET' && url.pathname === '/api/session') {
@@ -1622,7 +1622,7 @@ async function router(req, res) {
 if (require.main === module) {
   const server = http.createServer(router);
   server.listen(PORT, () => {
-    console.log(`Rango backend API running at http://localhost:${PORT}`);
+    console.log(`Hummingbird backend API running at http://localhost:${PORT}`);
     console.log(`Database: ${dbPath}`);
   });
 }

@@ -1,4 +1,4 @@
-# Rango
+# Hummingbird
 
 Authentication and role-based company access foundation.
 
@@ -22,7 +22,7 @@ Before resetting the database, always use:
 npm run db:reset
 ```
 
-The reset script stops running Rango server processes before recreating SQLite.
+The reset script stops running Hummingbird server processes before recreating SQLite.
 
 ## Accounts
 
@@ -63,14 +63,14 @@ Demo logins and seeded sample workspaces have been removed. Use `/signup` to cre
 
 ## Developer setup
 
-To seed the private Developer user, set `RANGO_DEVELOPER_PASSWORD` before starting or resetting the app:
+To seed the private Developer user, set `HUMMINGBIRD_DEVELOPER_PASSWORD` before starting or resetting the app:
 
 ```bash
-export RANGO_DEVELOPER_PASSWORD="use-a-secure-password"
+export HUMMINGBIRD_DEVELOPER_PASSWORD="use-a-secure-password"
 npm start
 ```
 
-If no Developer exists and this env variable is missing, Rango logs a setup warning and does not create a silent default password.
+If no Developer exists and this env variable is missing, Hummingbird logs a setup warning and does not create a silent default password. The older `RANGO_DEVELOPER_PASSWORD` variable is still accepted as a fallback for existing local setups.
 
 For local development, `.env` is loaded automatically and is ignored by git.
 
@@ -85,4 +85,4 @@ GEMINI_TIMEOUT=60000
 GEMINI_RETRY_ATTEMPTS=3
 ```
 
-If `GEMINI_API_KEY` is missing, Rango saves a failed analysis record with a safe error message instead of crashing.
+If `GEMINI_API_KEY` is missing, Hummingbird saves a failed analysis record with a safe error message instead of crashing.
