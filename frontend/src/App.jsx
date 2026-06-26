@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+const HUMMINGBIRD_LOGO = '/app/Himmingbird%20ai%20full%20logo.svg';
+
 const navItems = [
   ['Dashboard', 'dashboard', '◆'],
   ['Business Analysis', 'business-analysis', '▤'],
@@ -182,11 +184,7 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <a className="sidebar-brand" href="#dashboard" onClick={() => setActiveView('dashboard')}>
-          <span className="brand-mark">H</span>
-          <span>
-            <strong>Hummingbird</strong>
-            <small>AI visibility OS</small>
-          </span>
+          <BrandLogo />
         </a>
 
         <nav className="sidebar-nav">
@@ -243,11 +241,19 @@ function App() {
   );
 }
 
+function BrandLogo({ centered = false }) {
+  return (
+    <span className={`brand-logo ${centered ? 'centered' : ''}`}>
+      <img src={HUMMINGBIRD_LOGO} alt="Hummingbird" />
+    </span>
+  );
+}
+
 function LoadingScreen() {
   return (
     <main className="auth-page">
       <section className="loading-card">
-        <span className="brand-mark">H</span>
+        <BrandLogo centered />
         <h1>Loading Hummingbird</h1>
         <p>Connecting the React frontend to the backend API.</p>
         <div className="loading-bar"><span /></div>
@@ -301,11 +307,7 @@ function SetupGenerationScreen({ session, setupStatus, loading, error, onAction,
       <section className="setup-gate-shell">
         <div className="setup-gate-header">
           <a className="sidebar-brand" href="#setup">
-            <span className="brand-mark">H</span>
-            <span>
-              <strong>Hummingbird</strong>
-              <small>AI visibility OS</small>
-            </span>
+            <BrandLogo />
           </a>
           <button type="button" onClick={onLogout}>Logout</button>
         </div>
@@ -494,8 +496,7 @@ function AuthScreen({ mode, setMode, onAuthenticated }) {
     <main className="auth-page">
       <section className="auth-hero">
         <div className="brand-row">
-          <span className="brand-mark">H</span>
-          <strong>Hummingbird</strong>
+          <BrandLogo />
         </div>
         <h1>{isSignup ? 'Create your workspace.' : 'Welcome back to Hummingbird.'}</h1>
         <p>
@@ -2376,7 +2377,7 @@ function TablePage({ title, subtitle, children }) {
 function ComingSoon({ title }) {
   return (
     <section className="empty-state">
-            <span className="brand-mark">H</span>
+      <BrandLogo centered />
       <p className="eyebrow">Coming soon</p>
       <h1>{title}</h1>
       <p>This React page shell is ready. We can move this module from backend logic into frontend components next.</p>
