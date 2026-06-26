@@ -16,9 +16,14 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
   return GeminiProvider.analyzePromptVisibility(company, prompts, competitors, analysis);
 }
 
+async function generateAeoRecommendations(context) {
+  return GeminiProvider.generateAeoRecommendations(context);
+}
+
 module.exports = {
   generateBusinessAnalysis,
   generateCompanyPrompts,
   discoverCompetitors,
-  analyzePromptVisibility
+  analyzePromptVisibility,
+  generateAeoRecommendations
 };

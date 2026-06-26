@@ -63,6 +63,10 @@ const ANALYSIS_FIELDS = [
 ];
 const PROMPT_FIELDS = ['prompt_text', 'prompt_category', 'prompt_intent'];
 const COMPETITOR_FIELDS = ['competitor_name', 'website_url', 'reason'];
+const AEO_PRIORITY_FIELDS = ['title', 'focus_area', 'why_it_matters', 'evidence', 'impact', 'effort'];
+const AEO_ACTION_FIELDS = ['step', 'how_to_do_it', 'priority', 'expected_outcome'];
+const AEO_CONTENT_FIELDS = ['topic', 'target_prompt', 'page_type', 'reason'];
+const AEO_EVIDENCE_FIELDS = ['metric', 'finding'];
 
 function businessAnalysisJsonSchema() {
   return {
@@ -173,6 +177,62 @@ function promptVisibilityJsonSchema() {
             ai_response_summary: { type: 'STRING' },
             visibility_status: { type: 'STRING' }
           }
+        }
+      }
+    }
+  };
+}
+
+function aeoRecommendationsJsonSchema() {
+  const stringProps = (fields) => Object.fromEntries(fields.map((field) => [field, { type: 'STRING' }]));
+
+  return {
+    type: 'OBJECT',
+    required: ['focus_summary', 'priorities', 'action_plan', 'content_opportunities', 'evidence'],
+    properties: {
+      focus_summary: { type: 'STRING' },
+      priorities: {
+        type: 'ARRAY',
+        minItems: 3,
+        maxItems: 6,
+        items: {
+          type: 'OBJECT',
+          required: AEO_PRIORITY_FIELDS,
+          propertyOrdering: AEO_PRIORITY_FIELDS,
+          properties: stringProps(AEO_PRIORITY_FIELDS)
+        }
+      },
+      action_plan: {
+        type: 'ARRAY',
+        minItems: 4,
+        maxItems: 8,
+        items: {
+          type: 'OBJECT',
+          required: AEO_ACTION_FIELDS,
+          propertyOrdering: AEO_ACTION_FIELDS,
+          properties: stringProps(AEO_ACTION_FIELDS)
+        }
+      },
+      content_opportunities: {
+        type: 'ARRAY',
+        minItems: 3,
+        maxItems: 8,
+        items: {
+          type: 'OBJECT',
+          required: AEO_CONTENT_FIELDS,
+          propertyOrdering: AEO_CONTENT_FIELDS,
+          properties: stringProps(AEO_CONTENT_FIELDS)
+        }
+      },
+      evidence: {
+        type: 'ARRAY',
+        minItems: 3,
+        maxItems: 8,
+        items: {
+          type: 'OBJECT',
+          required: AEO_EVIDENCE_FIELDS,
+          propertyOrdering: AEO_EVIDENCE_FIELDS,
+          properties: stringProps(AEO_EVIDENCE_FIELDS)
         }
       }
     }
@@ -468,6 +528,66 @@ Context:
 ${JSON.stringify(context, null, 2)}`;
 }
 
+function buildAeoRecommendationsPrompt(context) {
+  return `You are Rango, an AEO/GEO strategy lead.
+
+Create a practical "what to do next" action plan for this brand using only saved Rango data.
+
+Use the provided saved business analysis, prompt checks, competitor mentions, citation recommendations, and dashboard metrics.
+
+Rules:
+- Return only valid JSON.
+- Do not return markdown.
+- Do not invent facts or metrics.
+- Every recommendation must be tied to the provided saved data.
+- If data is thin or missing, say what data must be collected next instead of pretending.
+- Focus on AEO/GEO: answer-engine visibility, brand mentions, competitor gap, citation footprint, content pages, and prompt coverage.
+- Keep all copy client-ready, direct, and actionable.
+- "impact" must be High, Medium, or Low.
+- "effort" must be High, Medium, or Low.
+- "priority" must be P1, P2, or P3.
+
+Return this exact JSON shape:
+{
+  "focus_summary": "",
+  "priorities": [
+    {
+      "title": "",
+      "focus_area": "",
+      "why_it_matters": "",
+      "evidence": "",
+      "impact": "",
+      "effort": ""
+    }
+  ],
+  "action_plan": [
+    {
+      "step": "",
+      "how_to_do_it": "",
+      "priority": "",
+      "expected_outcome": ""
+    }
+  ],
+  "content_opportunities": [
+    {
+      "topic": "",
+      "target_prompt": "",
+      "page_type": "",
+      "reason": ""
+    }
+  ],
+  "evidence": [
+    {
+      "metric": "",
+      "finding": ""
+    }
+  ]
+}
+
+Saved Rango data:
+${JSON.stringify(context, null, 2)}`;
+}
+
 function validateCompetitorDiscoveryPayload(payload) {
   const competitors = Array.isArray(payload?.competitors) ? payload.competitors : [];
 
@@ -559,6 +679,46 @@ function validatePromptVisibilityPayload(payload, prompts, company) {
         visibility_status: String(result.visibility_status || 'checked').trim()
       };
     });
+}
+
+function normalizeAeoItems(payload, key, fields, minimum) {
+  const items = Array.isArray(payload?.[key]) ? payload[key] : [];
+
+  if (items.length < minimum) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  return items.slice(0, 8).map((item) => {
+    const normalized = {};
+
+    fields.forEach((field) => {
+      const value = item?.[field];
+
+      if (typeof value !== 'string' || !value.trim()) {
+        throw new Error('AI_INVALID_JSON');
+      }
+
+      normalized[field] = value.trim();
+    });
+
+    return normalized;
+  });
+}
+
+function validateAeoRecommendationsPayload(payload) {
+  const focusSummary = payload?.focus_summary;
+
+  if (typeof focusSummary !== 'string' || !focusSummary.trim()) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  return {
+    focus_summary: focusSummary.trim(),
+    priorities: normalizeAeoItems(payload, 'priorities', AEO_PRIORITY_FIELDS, 3),
+    action_plan: normalizeAeoItems(payload, 'action_plan', AEO_ACTION_FIELDS, 4),
+    content_opportunities: normalizeAeoItems(payload, 'content_opportunities', AEO_CONTENT_FIELDS, 3),
+    evidence: normalizeAeoItems(payload, 'evidence', AEO_EVIDENCE_FIELDS, 3)
+  };
 }
 
 function sleep(ms) {
@@ -807,9 +967,51 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
   }
 }
 
+async function generateAeoRecommendations(context) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('AI_MISSING_KEY');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+
+  try {
+    const response = await callGemini({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: buildAeoRecommendationsPrompt(context) }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.25,
+        responseMimeType: 'application/json',
+        responseSchema: aeoRecommendationsJsonSchema()
+      }
+    }, controller.signal);
+
+    const payload = await response.json();
+    const text = normalizeGeminiJsonText(extractGeminiText(payload));
+
+    if (!text) {
+      throw new Error('AI_INVALID_JSON');
+    }
+
+    return validateAeoRecommendationsPayload(JSON.parse(text));
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
+    if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+    if (error instanceof TypeError) throw new Error('AI_NETWORK_ERROR');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 module.exports = {
   generateBusinessAnalysis,
   generateCompanyPrompts,
   discoverCompetitors,
-  analyzePromptVisibility
+  analyzePromptVisibility,
+  generateAeoRecommendations
 };

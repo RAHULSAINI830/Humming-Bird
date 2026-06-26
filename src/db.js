@@ -43,10 +43,13 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const dataDir = path.join(__dirname, '..', 'data');
+const isVercel = process.env.VERCEL === '1';
+const dataDir = isVercel ? '/tmp' : path.join(__dirname, '..', 'data');
 const dbPath = path.join(dataDir, 'rango.sqlite');
 
-fs.mkdirSync(dataDir, { recursive: true });
+if (!isVercel) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 
 try {
   fs.chmodSync(dataDir, 0o755);
@@ -191,6 +194,24 @@ function migrate() {
 
     CREATE INDEX IF NOT EXISTS idx_company_competitors_company_id
       ON company_competitors(company_id);
+
+    CREATE TABLE IF NOT EXISTS aeo_recommendations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      recommendation_status TEXT NOT NULL DEFAULT 'completed',
+      source_type TEXT,
+      focus_summary TEXT,
+      priorities_json TEXT,
+      action_plan_json TEXT,
+      content_opportunities_json TEXT,
+      evidence_json TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_aeo_recommendations_company_id
+      ON aeo_recommendations(company_id);
 
   `);
 
@@ -990,6 +1011,51 @@ function listBusinessAnalyses(companyId) {
   `).all(companyId);
 }
 
+function createAeoRecommendation(companyId, recommendation, sourceType = 'gemini') {
+  const serialize = (value) => JSON.stringify(Array.isArray(value) ? value : []);
+
+  return db.prepare(`
+    INSERT INTO aeo_recommendations (
+      company_id,
+      recommendation_status,
+      source_type,
+      focus_summary,
+      priorities_json,
+      action_plan_json,
+      content_opportunities_json,
+      evidence_json
+    )
+    VALUES (?, 'completed', ?, ?, ?, ?, ?, ?)
+  `).run(
+    companyId,
+    sourceType,
+    recommendation.focus_summary || '',
+    serialize(recommendation.priorities),
+    serialize(recommendation.action_plan),
+    serialize(recommendation.content_opportunities),
+    serialize(recommendation.evidence)
+  );
+}
+
+function getLatestAeoRecommendation(companyId) {
+  return db.prepare(`
+    SELECT *
+    FROM aeo_recommendations
+    WHERE company_id = ?
+    ORDER BY datetime(created_at) DESC, id DESC
+    LIMIT 1
+  `).get(companyId);
+}
+
+function listAeoRecommendations(companyId) {
+  return db.prepare(`
+    SELECT *
+    FROM aeo_recommendations
+    WHERE company_id = ?
+    ORDER BY datetime(created_at) DESC, id DESC
+  `).all(companyId);
+}
+
 function listCompanyPrompts(companyId) {
   return db.prepare(`
     SELECT *
@@ -1378,6 +1444,9 @@ module.exports = {
   getLatestCompletedBusinessAnalysis,
   getBusinessAnalysisById,
   listBusinessAnalyses,
+  createAeoRecommendation,
+  getLatestAeoRecommendation,
+  listAeoRecommendations,
   listCompanyPrompts,
   getCompanyPromptById,
   addCompanyPrompt,

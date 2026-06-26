@@ -7,11 +7,14 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "build": "npm run frontend:build",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
     "stop": "pkill -f \"node src/server.js\" || true; pkill -f \"node --watch src/server.js\" || true",
     "restart": "npm run stop && npm start",
     "db:reset": "npm run stop && rm -f data/rango.sqlite && node src/server.js --init-only"
   },
   "engines": {
-    "node": ">=25"
+    "node": ">=22"
   }
 }
