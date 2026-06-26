@@ -1051,19 +1051,21 @@ function AeoRecommendations({ data, onChange, workspace, goTo }) {
               </div>
               <p className="aeo-hero-kicker">Recommended focus</p>
               <h2>{latest.focus_summary}</h2>
+            </div>
+            <div className="aeo-hero-side">
+              <div className="aeo-compass" aria-hidden="true">
+                <span><SettingsIcon name="target" /></span>
+                <i />
+                <i />
+                <i />
+                <b>Focus map</b>
+              </div>
               <div className="aeo-score-row">
                 <AeoMiniMetric label="Visibility score" value={summary.visibilityScore === null || summary.visibilityScore === undefined ? 'No data' : `${summary.visibilityScore}%`} />
                 <AeoMiniMetric label="Brand mentions" value={summary.brandMentioned ?? 0} />
                 <AeoMiniMetric label="Competitor mentions" value={summary.competitorMentions ?? 0} />
                 <AeoMiniMetric label="Citation ideas" value={summary.citations ?? 0} />
               </div>
-            </div>
-            <div className="aeo-compass" aria-hidden="true">
-              <span><SettingsIcon name="target" /></span>
-              <i />
-              <i />
-              <i />
-              <b>Focus map</b>
             </div>
           </article>
 
