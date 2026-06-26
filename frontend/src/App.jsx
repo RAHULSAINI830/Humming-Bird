@@ -27,6 +27,12 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(data.error || 'Something went wrong.');
     error.data = data;
+    error.status = response.status;
+
+    if (response.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hummingbird:auth-expired'));
+    }
+
     throw error;
   }
 
@@ -59,6 +65,23 @@ function App() {
         setStatus('ready');
       })
       .catch(() => setStatus('guest'));
+  }, []);
+
+  useEffect(() => {
+    function handleAuthExpired() {
+      setSession(null);
+      setStatus('guest');
+      setDashboard(null);
+      setBusinessAnalysis(null);
+      setAeoRecommendations(null);
+      setSetupStatus(null);
+      setSetupLoading(false);
+      setSetupError('');
+      setNotice('Your session expired. Please log in again.');
+    }
+
+    window.addEventListener('hummingbird:auth-expired', handleAuthExpired);
+    return () => window.removeEventListener('hummingbird:auth-expired', handleAuthExpired);
   }, []);
 
   useEffect(() => {
