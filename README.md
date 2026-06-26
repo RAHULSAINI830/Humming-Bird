@@ -66,11 +66,14 @@ Demo logins and seeded sample workspaces have been removed. Use `/signup` to cre
 To seed the private Developer user, set `HUMMINGBIRD_DEVELOPER_PASSWORD` before starting or resetting the app:
 
 ```bash
+export HUMMINGBIRD_SESSION_SECRET="use-a-long-random-session-secret"
 export HUMMINGBIRD_DEVELOPER_PASSWORD="use-a-secure-password"
 npm start
 ```
 
 If no Developer exists and this env variable is missing, Hummingbird logs a setup warning and does not create a silent default password. The older `RANGO_DEVELOPER_PASSWORD` variable is still accepted as a fallback for existing local setups.
+
+For Vercel, always set `HUMMINGBIRD_SESSION_SECRET` so signed login cookies remain valid across serverless function invocations.
 
 For local development, `.env` is loaded automatically and is ignored by git.
 

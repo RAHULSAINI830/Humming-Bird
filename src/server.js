@@ -48,7 +48,13 @@ const { hashPassword, verifyPassword } = require('./auth');
 const AIService = require('./services/ai/ai-service');
 
 const PORT = Number(process.env.PORT || 3000);
-const sessions = new Map();
+const SESSION_COOKIE_NAME = 'hbsid';
+const SESSION_SECRET =
+  process.env.HUMMINGBIRD_SESSION_SECRET ||
+  process.env.SESSION_SECRET ||
+  process.env.HUMMINGBIRD_DEVELOPER_PASSWORD ||
+  process.env.RANGO_DEVELOPER_PASSWORD ||
+  'hummingbird-local-development-secret';
 const BASE_ASSIGNABLE_USER_ROLES = [
   'Marketing Manager',
   'Operations Manager',
@@ -76,35 +82,128 @@ function parseCookies(req) {
   );
 }
 
+function base64UrlEncode(value) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(value, 'base64url').toString('utf8');
+}
+
+function signSessionPayload(payload) {
+  return crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+}
+
+function encodeSessionClaims(claims) {
+  const payload = base64UrlEncode(JSON.stringify(claims));
+  const signature = signSessionPayload(payload);
+  return `${payload}.${signature}`;
+}
+
+function decodeSessionClaims(token) {
+  const [payload, signature] = String(token || '').split('.');
+
+  if (!payload || !signature) {
+    return null;
+  }
+
+  const expectedSignature = signSessionPayload(payload);
+  const provided = Buffer.from(signature);
+  const expected = Buffer.from(expectedSignature);
+
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+    return null;
+  }
+
+  try {
+    const claims = JSON.parse(base64UrlDecode(payload));
+
+    if (!claims?.userId) {
+      return null;
+    }
+
+    return claims;
+  } catch {
+    return null;
+  }
+}
+
+function cookieOptions(maxAge = 86400) {
+  const secure = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  return `HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`;
+}
+
+function setSessionCookie(res, claims) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${encodeURIComponent(encodeSessionClaims(claims))}; ${cookieOptions()}`);
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; ${cookieOptions(0)}`);
+}
+
+function hydrateSession(claims) {
+  const user = getUserById(Number(claims.userId));
+
+  if (!user || user.status !== 'active') {
+    return null;
+  }
+
+  const isDeveloper = userHasRole(user.id, 'Developer');
+  const companies = workspaceCompaniesForUser(user);
+  const requestedCompanyId = Number(claims.selectedCompanyId || 0);
+  const selectedCompany = requestedCompanyId
+    ? companies.find((company) => Number(company.company_id) === requestedCompanyId)
+    : companies[0];
+  const companyId = selectedCompany?.company_id || companies[0]?.company_id || null;
+  const access = companyId
+    ? (isDeveloper ? getDeveloperCompanyAccess(companyId) : getUserCompanyAccess(user.id, companyId))
+    : null;
+
+  return {
+    userId: user.id,
+    userFullName: user.full_name,
+    userEmail: user.email,
+    userStatus: user.status,
+    isDeveloper,
+    workspaceCompanies: companies,
+    ...snapshotAccess(access || {
+      company_id: null,
+      company_name: isDeveloper ? 'Platform Admin' : null,
+      role_id: null,
+      role_name: isDeveloper ? 'Developer' : null
+    })
+  };
+}
+
 function getSession(req) {
-  const sid = parseCookies(req).sid;
-  return sid ? sessions.get(sid) : null;
+  const cookies = parseCookies(req);
+  const token = cookies[SESSION_COOKIE_NAME] || cookies.sid;
+  const claims = decodeSessionClaims(token);
+  return claims ? hydrateSession(claims) : null;
 }
 
 function createSession(res, payload) {
-  const sid = crypto.randomBytes(32).toString('hex');
-  sessions.set(sid, payload);
-  res.setHeader('Set-Cookie', `sid=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=86400`);
-  return payload;
+  const claims = {
+    userId: payload.userId,
+    selectedCompanyId: payload.selectedCompanyId || null
+  };
+  setSessionCookie(res, claims);
+  return hydrateSession(claims) || payload;
 }
 
-function updateSession(req, payload) {
-  const sid = parseCookies(req).sid;
-  const current = sid ? sessions.get(sid) : null;
+function updateSession(req, res, payload) {
+  const current = getSession(req);
 
-  if (sid && current) {
-    sessions.set(sid, { ...current, ...payload });
+  if (current) {
+    setSessionCookie(res, {
+      userId: current.userId,
+      selectedCompanyId: payload.selectedCompanyId || current.selectedCompanyId || null
+    });
   }
 }
 
 function destroySession(req, res) {
-  const sid = parseCookies(req).sid;
-
-  if (sid) {
-    sessions.delete(sid);
-  }
-
-  res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  clearSessionCookie(res);
 }
 
 function sendJson(res, payload, statusCode = 200) {
@@ -751,7 +850,7 @@ async function handleSelectCompany(req, res) {
   }
 
   const payload = snapshotAccess(access);
-  updateSession(req, payload);
+  updateSession(req, res, payload);
   const updatedSession = { ...session, ...payload };
 
   return sendJson(res, sessionPayload(updatedSession));
