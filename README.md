@@ -89,3 +89,11 @@ GEMINI_RETRY_ATTEMPTS=3
 ```
 
 If `GEMINI_API_KEY` is missing, Hummingbird saves a failed analysis record with a safe error message instead of crashing.
+
+## Vercel database seed
+
+For the current prototype, `data/rango.sqlite` is intentionally committed as a bundled seed database so Vercel can start with the same users, companies, prompts, analyses, and access records that exist locally.
+
+On Vercel, the runtime database is copied from this seed into `/tmp/rango.sqlite` when the serverless function starts and no runtime database exists yet.
+
+Important: Vercel `/tmp` storage is ephemeral. New production signups or generated data can disappear after cold starts/redeploys. Move to a hosted database such as Neon, Supabase, Turso, or Postgres before production launch.

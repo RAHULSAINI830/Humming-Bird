@@ -46,13 +46,26 @@ loadLocalEnv();
 const isVercel = process.env.VERCEL === '1';
 const dataDir = isVercel ? '/tmp' : path.join(__dirname, '..', 'data');
 const dbPath = path.join(dataDir, 'rango.sqlite');
+const bundledSeedDbPath = path.join(__dirname, '..', 'data', 'rango.sqlite');
 
 if (!isVercel) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
+if (isVercel && !fs.existsSync(dbPath) && fs.existsSync(bundledSeedDbPath)) {
+  try {
+    fs.copyFileSync(bundledSeedDbPath, dbPath);
+    fs.chmodSync(dbPath, 0o600);
+    console.log('Hummingbird production database initialized from bundled SQLite seed.');
+  } catch (error) {
+    console.warn(`Could not initialize production database from bundled seed: ${error.message}`);
+  }
+}
+
 try {
-  fs.chmodSync(dataDir, 0o755);
+  if (!isVercel) {
+    fs.chmodSync(dataDir, 0o755);
+  }
 
   if (fs.existsSync(dbPath)) {
     fs.chmodSync(dbPath, 0o644);
