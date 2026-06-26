@@ -15,6 +15,14 @@
   ],
   "routes": [
     {
+      "src": "/favicon.ico",
+      "dest": "frontend/favicon.ico"
+    },
+    {
+      "src": "/favicon.svg",
+      "dest": "frontend/favicon.svg"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "api/index.js"
     },
