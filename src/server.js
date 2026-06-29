@@ -842,23 +842,44 @@ async function readGoogleJson(response, fallbackMessage) {
 
   if (!response.ok) {
     const message = data?.error_description || data?.error?.message || data?.error || fallbackMessage;
-    throw new Error(String(message || fallbackMessage).slice(0, 220));
+    const error = new Error(String(message || fallbackMessage).slice(0, 220));
+    error.googleError = data?.error || '';
+    error.googleDescription = data?.error_description || data?.error?.message || '';
+    error.statusCode = response.status;
+    throw error;
   }
 
   return data;
 }
 
 function safeGoogleErrorCode(error) {
-  const message = String(error?.message || '').toLowerCase();
+  const googleError = String(error?.googleError || '').toLowerCase();
+  const message = `${googleError} ${String(error?.googleDescription || '')} ${String(error?.message || '')}`.toLowerCase();
 
   if (message.includes('redirect_uri_mismatch')) return 'redirect-uri-mismatch';
   if (message.includes('invalid_client')) return 'invalid-client';
+  if (message.includes('invalid_grant')) return 'invalid-grant';
+  if (message.includes('unauthorized_client')) return 'unauthorized-client';
+  if (message.includes('invalid_request')) return 'invalid-request';
   if (message.includes('access_denied')) return 'access-denied';
   if (message.includes('not been used') || message.includes('disabled') || message.includes('api has not')) return 'api-not-enabled';
   if (message.includes('permission') || message.includes('forbidden')) return 'permission-denied';
   if (message.includes('search console')) return 'search-console-error';
+  if (message.includes('fetch failed') || message.includes('network')) return 'google-network-error';
 
   return 'google-callback-error';
+}
+
+function logGoogleCallbackIssue(req, error) {
+  const safeDetails = {
+    host: req.headers.host,
+    redirectUri: googleRedirectUri(req),
+    statusCode: error?.statusCode || '',
+    googleError: error?.googleError || '',
+    reason: safeGoogleErrorCode(error)
+  };
+
+  console.warn(`Google OAuth callback failed: ${JSON.stringify(safeDetails)}`);
 }
 
 function tokenExpiryFromSeconds(seconds) {
@@ -1135,7 +1156,7 @@ async function handleGoogleCallback(req, res, url) {
 
     return redirect(res, '/app/?geo=connected');
   } catch (error) {
-    console.warn(`Google OAuth callback failed: ${error.message}`);
+    logGoogleCallbackIssue(req, error);
     return redirect(res, `/app/?geo=failed&reason=${safeGoogleErrorCode(error)}`);
   }
 }

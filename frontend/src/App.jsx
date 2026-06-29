@@ -79,8 +79,12 @@ function App() {
     const reasonMessages = {
       'api-not-enabled': 'Google Search Console API is not enabled for this Google Cloud project.',
       'invalid-client': 'Google OAuth Client ID or Client Secret is missing or incorrect in Vercel.',
+      'invalid-grant': 'Google rejected the OAuth code. Restart the connection from GEO Visibility and make sure local GOOGLE_REDIRECT_URI matches localhost.',
+      'invalid-request': 'Google OAuth request is invalid. Check the redirect URI and OAuth client setup.',
+      'unauthorized-client': 'This OAuth client is not allowed to use this flow. Check Google OAuth client type and redirect URI.',
       'redirect-uri-mismatch': 'Google OAuth redirect URI does not exactly match the Vercel callback URL.',
       'permission-denied': 'The connected Google account does not have permission for Search Console properties.',
+      'google-network-error': 'Hummingbird could not reach Google from the server. Try again or check local network access.',
       'search-console-error': 'Google connected, but Search Console properties could not be fetched.',
       'google-callback-error': 'Google OAuth callback failed. Check Vercel environment variables and Google Cloud setup.'
     };
