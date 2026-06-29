@@ -848,6 +848,19 @@ async function readGoogleJson(response, fallbackMessage) {
   return data;
 }
 
+function safeGoogleErrorCode(error) {
+  const message = String(error?.message || '').toLowerCase();
+
+  if (message.includes('redirect_uri_mismatch')) return 'redirect-uri-mismatch';
+  if (message.includes('invalid_client')) return 'invalid-client';
+  if (message.includes('access_denied')) return 'access-denied';
+  if (message.includes('not been used') || message.includes('disabled') || message.includes('api has not')) return 'api-not-enabled';
+  if (message.includes('permission') || message.includes('forbidden')) return 'permission-denied';
+  if (message.includes('search console')) return 'search-console-error';
+
+  return 'google-callback-error';
+}
+
 function tokenExpiryFromSeconds(seconds) {
   return new Date(Date.now() + Number(seconds || 3600) * 1000).toISOString();
 }
@@ -1078,42 +1091,53 @@ async function handleGoogleCallback(req, res, url) {
     return redirect(res, '/app/?geo=not-configured');
   }
 
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: googleRedirectUri(req)
-    })
-  });
-  const tokenData = await readGoogleJson(tokenResponse, 'Google OAuth token exchange failed.');
+  try {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: googleRedirectUri(req)
+      })
+    });
+    const tokenData = await readGoogleJson(tokenResponse, 'Google OAuth token exchange failed.');
 
-  const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${tokenData.access_token}` }
-  });
-  const userInfo = await readGoogleJson(userInfoResponse, 'Could not fetch Google account.');
-  const properties = await fetchSearchConsoleProperties(tokenData.access_token);
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const userInfo = await readGoogleJson(userInfoResponse, 'Could not fetch Google account.');
 
-  upsertGoogleConnection({
-    userId: Number(state.userId),
-    companyId: Number(state.companyId),
-    googleEmail: userInfo.email || '',
-    accessTokenEncrypted: encryptSecret(tokenData.access_token),
-    refreshTokenEncrypted: tokenData.refresh_token ? encryptSecret(tokenData.refresh_token) : '',
-    tokenExpiry: tokenExpiryFromSeconds(tokenData.expires_in),
-    status: 'connected'
-  });
-  replaceSearchConsoleProperties(Number(state.companyId), properties);
+    upsertGoogleConnection({
+      userId: Number(state.userId),
+      companyId: Number(state.companyId),
+      googleEmail: userInfo.email || '',
+      accessTokenEncrypted: encryptSecret(tokenData.access_token),
+      refreshTokenEncrypted: tokenData.refresh_token ? encryptSecret(tokenData.refresh_token) : '',
+      tokenExpiry: tokenExpiryFromSeconds(tokenData.expires_in),
+      status: 'connected'
+    });
 
-  const selected = bestSearchConsoleProperty(getDeveloperCompanyAccess(Number(state.companyId)), properties);
-  if (selected) {
-    setSelectedSearchConsoleProperty(Number(state.companyId), selected);
+    try {
+      const properties = await fetchSearchConsoleProperties(tokenData.access_token);
+      replaceSearchConsoleProperties(Number(state.companyId), properties);
+
+      const selected = bestSearchConsoleProperty(getDeveloperCompanyAccess(Number(state.companyId)), properties);
+      if (selected) {
+        setSelectedSearchConsoleProperty(Number(state.companyId), selected);
+      }
+    } catch (propertiesError) {
+      console.warn(`Google Search Console properties could not be fetched: ${propertiesError.message}`);
+      return redirect(res, `/app/?geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`);
+    }
+
+    return redirect(res, '/app/?geo=connected');
+  } catch (error) {
+    console.warn(`Google OAuth callback failed: ${error.message}`);
+    return redirect(res, `/app/?geo=failed&reason=${safeGoogleErrorCode(error)}`);
   }
-
-  return redirect(res, '/app/?geo=connected');
 }
 
 async function handleSelectGeoProperty(req, res) {

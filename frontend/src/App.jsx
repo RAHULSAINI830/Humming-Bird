@@ -70,6 +70,32 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const geo = params.get('geo');
+    const reason = params.get('reason');
+
+    if (!geo) return;
+
+    const reasonMessages = {
+      'api-not-enabled': 'Google Search Console API is not enabled for this Google Cloud project.',
+      'invalid-client': 'Google OAuth Client ID or Client Secret is missing or incorrect in Vercel.',
+      'redirect-uri-mismatch': 'Google OAuth redirect URI does not exactly match the Vercel callback URL.',
+      'permission-denied': 'The connected Google account does not have permission for Search Console properties.',
+      'search-console-error': 'Google connected, but Search Console properties could not be fetched.',
+      'google-callback-error': 'Google OAuth callback failed. Check Vercel environment variables and Google Cloud setup.'
+    };
+    const geoMessages = {
+      connected: 'Google Search Console connected.',
+      'connected-no-properties': reasonMessages[reason] || 'Google connected, but no Search Console properties were found.',
+      failed: reasonMessages[reason] || 'Google Search Console connection failed.',
+      'not-configured': 'Google OAuth is not configured in Vercel.'
+    };
+
+    setNotice(geoMessages[geo] || 'Google Search Console setup status updated.');
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
+  useEffect(() => {
     function handleAuthExpired() {
       setSession(null);
       setStatus('guest');
