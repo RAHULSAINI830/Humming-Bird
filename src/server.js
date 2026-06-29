@@ -1,5 +1,7 @@
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
+const path = require('node:path');
 const { URL } = require('node:url');
 const {
   dbPath,
@@ -263,6 +265,78 @@ function sendJson(res, payload, statusCode = 200) {
 
 function notFound(res) {
   return sendJson(res, { error: 'Route not found' }, 404);
+}
+
+function staticContentType(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  const types = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.ico': 'image/x-icon',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.json': 'application/json; charset=utf-8'
+  };
+
+  return types[extension] || 'application/octet-stream';
+}
+
+function serveFile(res, filePath) {
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return notFound(res);
+  }
+
+  res.writeHead(200, {
+    'Content-Type': staticContentType(filePath),
+    'Cache-Control': filePath.includes(`${path.sep}assets${path.sep}`)
+      ? 'public, max-age=31536000, immutable'
+      : 'no-store'
+  });
+  fs.createReadStream(filePath).pipe(res);
+  return true;
+}
+
+function serveFrontend(req, res, url) {
+  const distDir = path.join(__dirname, '..', 'frontend', 'dist');
+
+  if (!fs.existsSync(path.join(distDir, 'index.html'))) {
+    return sendJson(res, {
+      error: 'Frontend build not found. Run npm run build, then restart npm start.'
+    }, 404);
+  }
+
+  if (url.pathname === '/') {
+    return redirect(res, '/app/');
+  }
+
+  if (url.pathname === '/favicon.ico' || url.pathname === '/favicon.svg') {
+    return serveFile(res, path.join(distDir, url.pathname.slice(1)));
+  }
+
+  if (url.pathname.startsWith('/app/assets/')) {
+    const assetPath = path.join(distDir, url.pathname.replace(/^\/app\//, ''));
+    return serveFile(res, assetPath);
+  }
+
+  if (url.pathname === '/app') {
+    return redirect(res, '/app/');
+  }
+
+  if (url.pathname.startsWith('/app/')) {
+    const requestedPath = path.join(distDir, url.pathname.replace(/^\/app\//, ''));
+
+    if (fs.existsSync(requestedPath) && fs.statSync(requestedPath).isFile()) {
+      return serveFile(res, requestedPath);
+    }
+
+    return serveFile(res, path.join(distDir, 'index.html'));
+  }
+
+  return false;
 }
 
 function readJson(req) {
@@ -2238,6 +2312,11 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/users/remove') {
       return handleRemoveUser(req, res);
+    }
+
+    if (req.method === 'GET') {
+      const served = serveFrontend(req, res, url);
+      if (served) return served;
     }
 
     return notFound(res);
