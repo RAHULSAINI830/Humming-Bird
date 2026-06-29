@@ -9,6 +9,7 @@ const navItems = [
   ['Competitors', 'competitors', '◎'],
   ['Prompts', 'prompts', '✦'],
   ['Citations', 'citations', '◇'],
+  ['GEO Visibility', 'geo', '⌖'],
   ['Users', 'users', '◌'],
   ['Settings', 'settings', '⚙']
 ];
@@ -50,6 +51,7 @@ function App() {
   const [promptsData, setPromptsData] = useState({ prompts: [], summary: null });
   const [competitorsData, setCompetitorsData] = useState({ competitors: [] });
   const [citationsData, setCitationsData] = useState({ citations: [], summary: null });
+  const [geoData, setGeoData] = useState(null);
   const [settingsData, setSettingsData] = useState(null);
   const [usersData, setUsersData] = useState({ users: [], company: null });
   const [developerData, setDeveloperData] = useState(null);
@@ -109,6 +111,10 @@ function App() {
 
     if (activeView === 'citations') {
       api('/api/citations').then(setCitationsData).catch((error) => setNotice(error.message));
+    }
+
+    if (activeView === 'geo') {
+      api('/api/geo').then(setGeoData).catch((error) => setNotice(error.message));
     }
 
     if (activeView === 'settings') {
@@ -256,6 +262,7 @@ function App() {
         {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+        {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'users' ? <Users data={usersData} onChange={setUsersData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
@@ -1760,6 +1767,221 @@ function Citations({ data, workspace }) {
         {!citations.length ? <EmptyInline title="No citations yet" text="Run prompt checks from the Prompts tab to generate citation recommendations." /> : null}
       </div>
     </section>
+  );
+}
+
+function GeoVisibility({ data, onChange, workspace }) {
+  const [loading, setLoading] = useState('');
+  const [message, setMessage] = useState('');
+  const countries = data?.countries || [];
+  const queries = data?.queries || [];
+  const properties = data?.properties || [];
+  const summary = data?.summary || {};
+  const canManage = Boolean(data?.canManage);
+  const maxImpressions = Math.max(...countries.map((row) => Number(row.impressions || 0)), 0);
+
+  async function syncGeo() {
+    setLoading('sync');
+    setMessage('');
+    try {
+      const result = await api('/api/geo/sync', { method: 'POST', body: '{}' });
+      onChange(result);
+      setMessage('Search Console GEO data synced and saved.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading('');
+    }
+  }
+
+  async function disconnect() {
+    const confirmed = window.confirm('Disconnect Google Search Console for this workspace? Saved GEO rows will stay in the database.');
+    if (!confirmed) return;
+    setLoading('disconnect');
+    setMessage('');
+    try {
+      const result = await api('/api/geo/disconnect', { method: 'POST', body: '{}' });
+      onChange(result);
+      setMessage('Search Console disconnected.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading('');
+    }
+  }
+
+  async function selectProperty(event) {
+    setLoading('property');
+    setMessage('');
+    try {
+      const result = await api('/api/geo/select-property', {
+        method: 'POST',
+        body: JSON.stringify({ propertyUrl: event.target.value })
+      });
+      onChange(result);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading('');
+    }
+  }
+
+  return (
+    <section className="page-content">
+      <PageHeader
+        eyebrow="GEO Visibility"
+        title="Geographic search presence"
+        subtitle="Real country, query, and page data synced from Google Search Console and saved to your database."
+        workspace={workspace}
+        action={canManage && data?.connected ? (
+          <button type="button" className="primary-button slim" onClick={syncGeo} disabled={loading === 'sync'}>
+            {loading === 'sync' ? 'Syncing…' : 'Sync Search Console'}
+          </button>
+        ) : null}
+      />
+
+      {!data ? <EmptyInline title="Loading GEO data" text="Checking Search Console connection and saved database rows." /> : null}
+
+      {data && !data.connected ? (
+        <article className="geo-connect-card">
+          <div>
+            <p className="eyebrow">Google Search Console</p>
+            <h2>Connect a verified website property</h2>
+            <p>For accurate GEO data, Hummingbird uses Google Search Console. The user’s Google account must have access to the website property.</p>
+          </div>
+          {canManage ? (
+            <button type="button" className="primary-button" onClick={() => { window.location.href = '/api/google/connect'; }}>
+              Connect Google Search Console
+            </button>
+          ) : (
+            <span className="soft-pill">View only</span>
+          )}
+        </article>
+      ) : null}
+
+      {data?.connected ? (
+        <>
+          <article className="geo-toolbar">
+            <div>
+              <p className="eyebrow">Connected account</p>
+              <h2>{data.connection?.google_email || 'Google account connected'}</h2>
+              <p>{summary.lastSyncedAt ? `Last synced on ${summary.lastSyncedAt}` : 'No Search Console sync has been saved yet.'}</p>
+            </div>
+            <div className="geo-toolbar-actions">
+              <label>
+                Search Console property
+                <select value={data.selectedProperty?.site_url || ''} onChange={selectProperty} disabled={!canManage || loading === 'property'}>
+                  {properties.map((property) => (
+                    <option key={property.site_url} value={property.site_url}>{property.site_url}</option>
+                  ))}
+                </select>
+              </label>
+              {canManage ? <button type="button" className="ghost-danger-button" onClick={disconnect} disabled={loading === 'disconnect'}>{loading === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</button> : null}
+            </div>
+          </article>
+
+          {message ? <div className={message.includes('synced') || message.includes('disconnected') ? 'success-notice' : 'notice'}>{message}</div> : null}
+
+          <div className="geo-kpi-grid">
+            <Metric title="Countries" value={summary.countries ?? 0} helper="Markets with search impressions" />
+            <Metric title="Clicks" value={summary.clicks ?? 0} helper={summary.dateRange ? `${summary.dateRange.startDate} → ${summary.dateRange.endDate}` : 'Awaiting sync'} />
+            <Metric title="Impressions" value={summary.impressions ?? 0} helper="Total GSC impressions" />
+            <Metric title="Average CTR" value={`${((summary.ctr || 0) * 100).toFixed(2)}%`} helper="Clicks divided by impressions" />
+            <Metric title="Avg Position" value={summary.position ? summary.position.toFixed(1) : 'NA'} helper="Weighted by impressions" />
+          </div>
+
+          <div className="geo-body-grid">
+            <article className="geo-map-card">
+              <div className="dashboard-panel-head">
+                <h2>GEO heat map</h2>
+                <span>{countries.length ? 'Real GSC data' : 'No synced data'}</span>
+              </div>
+              <div className="geo-heat-grid">
+                {countries.length ? countries.slice(0, 40).map((country) => {
+                  const intensity = maxImpressions ? Math.max(0.08, Number(country.impressions || 0) / maxImpressions) : 0.08;
+                  return (
+                    <div
+                      key={`${country.country}-${country.id}`}
+                      className="geo-heat-cell"
+                      style={{ '--heat': intensity }}
+                      title={`${country.country_label}: ${country.impressions} impressions, ${country.clicks} clicks`}
+                    >
+                      <strong>{country.country}</strong>
+                      <span>{country.country_label}</span>
+                      <small>{country.impressions} impressions</small>
+                    </div>
+                  );
+                }) : (
+                  <DashboardEmptyBlock title="No GEO rows saved yet" text="Click Sync Search Console after connecting a verified property. Hummingbird will store country-level rows in SQLite." />
+                )}
+              </div>
+            </article>
+
+            <article className="geo-side-card">
+              <p className="eyebrow">How this is generated</p>
+              <h2>Accurate source: Google Search Console</h2>
+              <p>Hummingbird pulls Search Analytics rows by country, query, and page for the selected property, saves them in the database, and renders this page from stored rows.</p>
+              <ol>
+                <li>Connect Google Search Console.</li>
+                <li>Select the verified website property.</li>
+                <li>Sync the last 28 days of data.</li>
+              </ol>
+            </article>
+          </div>
+
+          <div className="dashboard-table-grid">
+            <DashboardPanel title="Top countries" action="By impressions">
+              <GeoCountryTable rows={countries} />
+            </DashboardPanel>
+            <DashboardPanel title="Top queries and pages" action="By impressions">
+              <GeoQueryTable rows={queries} />
+            </DashboardPanel>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function GeoCountryTable({ rows }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No country data yet" text="Sync Google Search Console to populate country rows." />;
+
+  return (
+    <table className="dashboard-data-table">
+      <thead><tr><th>Country</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Position</th></tr></thead>
+      <tbody>
+        {rows.slice(0, 12).map((row) => (
+          <tr key={`${row.country}-${row.id}`}>
+            <td>{row.country_label} <span className="muted">({row.country})</span></td>
+            <td>{row.clicks}</td>
+            <td>{row.impressions}</td>
+            <td>{(Number(row.ctr || 0) * 100).toFixed(2)}%</td>
+            <td>{Number(row.position || 0).toFixed(1)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function GeoQueryTable({ rows }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No query data yet" text="Sync Google Search Console to populate query and page rows." />;
+
+  return (
+    <table className="dashboard-data-table">
+      <thead><tr><th>Query</th><th>Country</th><th>Page</th><th>Clicks</th><th>Impressions</th></tr></thead>
+      <tbody>
+        {rows.slice(0, 12).map((row) => (
+          <tr key={`${row.id}-${row.query}`}>
+            <td>{row.query || 'Unknown query'}</td>
+            <td>{row.country || 'NA'}</td>
+            <td className="url-cell">{row.page || 'NA'}</td>
+            <td>{row.clicks}</td>
+            <td>{row.impressions}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

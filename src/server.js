@@ -36,6 +36,17 @@ const {
   replaceCompanyPrompts,
   upsertCompanyCompetitors,
   updatePromptVisibility,
+  upsertGoogleConnection,
+  getGoogleConnection,
+  updateGoogleConnectionTokens,
+  disconnectGoogleConnection,
+  replaceSearchConsoleProperties,
+  listSearchConsoleProperties,
+  setSelectedSearchConsoleProperty,
+  getSelectedSearchConsoleProperty,
+  replaceGeoSnapshots,
+  listGeoCountrySnapshots,
+  listGeoQuerySnapshots,
   completeCompanyOnboarding,
   createUserCompanyWorkspace,
   listAllCompaniesForDeveloper,
@@ -66,6 +77,8 @@ const ELEVATED_ASSIGNABLE_USER_ROLES = ['Developer', 'Super Admin', 'Business Ow
 const COMPANY_ACCESS_STATUSES = ['active', 'inactive'];
 const USER_MANAGEMENT_ROLES = ['Developer', 'Super Admin', 'Business Owner'];
 const CONTENT_MANAGEMENT_ROLES = ['Developer', 'Super Admin', 'Business Owner', 'Marketing Manager'];
+const GEO_MANAGEMENT_ROLES = CONTENT_MANAGEMENT_ROLES;
+const GOOGLE_SEARCH_CONSOLE_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/userinfo.email';
 
 initDatabase();
 
@@ -88,6 +101,38 @@ function base64UrlEncode(value) {
 
 function base64UrlDecode(value) {
   return Buffer.from(value, 'base64url').toString('utf8');
+}
+
+function encryptionKey() {
+  return crypto
+    .createHash('sha256')
+    .update(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY || SESSION_SECRET)
+    .digest();
+}
+
+function encryptSecret(value) {
+  if (!value) return '';
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [iv, tag, encrypted].map((part) => part.toString('base64url')).join('.');
+}
+
+function decryptSecret(value) {
+  if (!value) return '';
+  const [ivRaw, tagRaw, encryptedRaw] = String(value).split('.');
+
+  if (!ivRaw || !tagRaw || !encryptedRaw) {
+    return '';
+  }
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(ivRaw, 'base64url'));
+  decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(encryptedRaw, 'base64url')),
+    decipher.final()
+  ]).toString('utf8');
 }
 
 function signSessionPayload(payload) {
@@ -747,6 +792,425 @@ function requireSetupManager(req, res) {
   }
 
   return context;
+}
+
+function publicBaseUrl(req) {
+  const forwardedProto = req.headers['x-forwarded-proto'];
+  const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto || 'http';
+  return process.env.PUBLIC_APP_URL || `${proto}://${req.headers.host}`;
+}
+
+function googleRedirectUri(req) {
+  return process.env.GOOGLE_REDIRECT_URI || `${publicBaseUrl(req)}/api/google/callback`;
+}
+
+function redirect(res, location) {
+  res.writeHead(302, { Location: location });
+  res.end();
+}
+
+function encodeOAuthState(payload) {
+  const state = base64UrlEncode(JSON.stringify(payload));
+  return `${state}.${signSessionPayload(state)}`;
+}
+
+function decodeOAuthState(state) {
+  const [payload, signature] = String(state || '').split('.');
+
+  if (!payload || !signature) {
+    return null;
+  }
+
+  const expectedSignature = signSessionPayload(payload);
+  const provided = Buffer.from(signature);
+  const expected = Buffer.from(expectedSignature);
+
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(payload));
+    return parsed.exp && parsed.exp > Date.now() ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readGoogleJson(response, fallbackMessage) {
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message = data?.error_description || data?.error?.message || data?.error || fallbackMessage;
+    throw new Error(String(message || fallbackMessage).slice(0, 220));
+  }
+
+  return data;
+}
+
+function tokenExpiryFromSeconds(seconds) {
+  return new Date(Date.now() + Number(seconds || 3600) * 1000).toISOString();
+}
+
+function tokenIsExpired(connection) {
+  if (!connection?.token_expiry) return true;
+  return new Date(connection.token_expiry).getTime() < Date.now() + 60_000;
+}
+
+async function refreshGoogleAccessToken(connection) {
+  const refreshToken = decryptSecret(connection.refresh_token_encrypted);
+
+  if (!refreshToken) {
+    throw new Error('Google refresh token is missing. Please reconnect Search Console.');
+  }
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID || '',
+      client_secret: process.env.GOOGLE_CLIENT_SECRET || '',
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token'
+    })
+  });
+  const data = await readGoogleJson(response, 'Could not refresh Google token.');
+  const accessToken = data.access_token;
+
+  if (!accessToken) {
+    throw new Error('Google did not return a new access token.');
+  }
+
+  updateGoogleConnectionTokens(
+    connection.id,
+    encryptSecret(accessToken),
+    '',
+    tokenExpiryFromSeconds(data.expires_in)
+  );
+
+  return accessToken;
+}
+
+async function googleAccessTokenForCompany(companyId) {
+  const connection = getGoogleConnection(companyId);
+
+  if (!connection || connection.status !== 'connected') {
+    throw new Error('Google Search Console is not connected.');
+  }
+
+  if (!tokenIsExpired(connection)) {
+    const accessToken = decryptSecret(connection.access_token_encrypted);
+    if (accessToken) return accessToken;
+  }
+
+  return refreshGoogleAccessToken(connection);
+}
+
+async function fetchSearchConsoleProperties(accessToken) {
+  const response = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const data = await readGoogleJson(response, 'Could not fetch Search Console properties.');
+  return Array.isArray(data.siteEntry) ? data.siteEntry : [];
+}
+
+function normalizeDomain(value) {
+  const raw = normalize(value).replace(/^sc-domain:/i, '');
+
+  if (!raw) return '';
+
+  try {
+    return new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname.replace(/^www\./i, '').toLowerCase();
+  } catch {
+    return raw.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase();
+  }
+}
+
+function bestSearchConsoleProperty(company, properties) {
+  const companyDomain = normalizeDomain(company?.website_url);
+
+  if (!companyDomain) {
+    return properties[0]?.siteUrl || '';
+  }
+
+  const exact = properties.find((property) => normalizeDomain(property.siteUrl) === companyDomain);
+  const contains = properties.find((property) => {
+    const propertyDomain = normalizeDomain(property.siteUrl);
+    return propertyDomain && (companyDomain.endsWith(propertyDomain) || propertyDomain.endsWith(companyDomain));
+  });
+
+  return (exact || contains || properties[0])?.siteUrl || '';
+}
+
+function dateDaysAgo(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function countryLabel(countryCode) {
+  const code = String(countryCode || '').toUpperCase();
+
+  if (!code) return 'Unknown';
+
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+async function searchConsoleQuery(accessToken, propertyUrl, body) {
+  const response = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(propertyUrl)}/searchAnalytics/query`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    }
+  );
+  const data = await readGoogleJson(response, 'Could not fetch Search Console analytics.');
+  return Array.isArray(data.rows) ? data.rows : [];
+}
+
+function geoDashboardPayload(companyId) {
+  const connection = getGoogleConnection(companyId);
+  const properties = listSearchConsoleProperties(companyId);
+  const selected = getSelectedSearchConsoleProperty(companyId) || properties[0] || null;
+  const countryRows = listGeoCountrySnapshots(companyId, selected?.site_url || '').filter((row, index, all) => {
+    const firstCreated = all[0]?.created_at;
+    return !firstCreated || row.created_at === firstCreated;
+  });
+  const queryRows = listGeoQuerySnapshots(companyId, selected?.site_url || '').filter((row, index, all) => {
+    const firstCreated = all[0]?.created_at;
+    return !firstCreated || row.created_at === firstCreated;
+  });
+  const totalClicks = countryRows.reduce((sum, row) => sum + Number(row.clicks || 0), 0);
+  const totalImpressions = countryRows.reduce((sum, row) => sum + Number(row.impressions || 0), 0);
+  const weightedPosition = countryRows.reduce((sum, row) => sum + Number(row.position || 0) * Number(row.impressions || 0), 0);
+
+  return {
+    connected: Boolean(connection && connection.status === 'connected'),
+    connection: connection ? {
+      google_email: connection.google_email,
+      status: connection.status,
+      updated_at: connection.updated_at
+    } : null,
+    properties,
+    selectedProperty: selected,
+    summary: {
+      countries: countryRows.length,
+      clicks: totalClicks,
+      impressions: totalImpressions,
+      ctr: totalImpressions ? totalClicks / totalImpressions : 0,
+      position: totalImpressions ? weightedPosition / totalImpressions : 0,
+      lastSyncedAt: countryRows[0]?.created_at || queryRows[0]?.created_at || null,
+      dateRange: countryRows[0] ? { startDate: countryRows[0].start_date, endDate: countryRows[0].end_date } : null
+    },
+    countries: countryRows.map((row) => ({
+      ...row,
+      country_label: countryLabel(row.country)
+    })),
+    queries: queryRows
+  };
+}
+
+function handleGeo(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  if (context.access.role_name === 'Technician') {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  return sendJson(res, {
+    ...geoDashboardPayload(context.access.company_id),
+    canManage: GEO_MANAGEMENT_ROLES.includes(context.access.role_name)
+  });
+}
+
+function handleGoogleConnect(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  if (!GEO_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return sendJson(res, { error: 'Google OAuth is not configured.' }, 500);
+  }
+
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', process.env.GOOGLE_CLIENT_ID);
+  authUrl.searchParams.set('redirect_uri', googleRedirectUri(req));
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', GOOGLE_SEARCH_CONSOLE_SCOPE);
+  authUrl.searchParams.set('access_type', 'offline');
+  authUrl.searchParams.set('prompt', 'consent');
+  authUrl.searchParams.set('state', encodeOAuthState({
+    userId: context.session.userId,
+    companyId: context.access.company_id,
+    exp: Date.now() + 10 * 60 * 1000
+  }));
+
+  return redirect(res, authUrl.toString());
+}
+
+async function handleGoogleCallback(req, res, url) {
+  const code = url.searchParams.get('code');
+  const state = decodeOAuthState(url.searchParams.get('state'));
+
+  if (!code || !state) {
+    return redirect(res, '/app/?geo=failed');
+  }
+
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return redirect(res, '/app/?geo=not-configured');
+  }
+
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: googleRedirectUri(req)
+    })
+  });
+  const tokenData = await readGoogleJson(tokenResponse, 'Google OAuth token exchange failed.');
+
+  const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+    headers: { Authorization: `Bearer ${tokenData.access_token}` }
+  });
+  const userInfo = await readGoogleJson(userInfoResponse, 'Could not fetch Google account.');
+  const properties = await fetchSearchConsoleProperties(tokenData.access_token);
+
+  upsertGoogleConnection({
+    userId: Number(state.userId),
+    companyId: Number(state.companyId),
+    googleEmail: userInfo.email || '',
+    accessTokenEncrypted: encryptSecret(tokenData.access_token),
+    refreshTokenEncrypted: tokenData.refresh_token ? encryptSecret(tokenData.refresh_token) : '',
+    tokenExpiry: tokenExpiryFromSeconds(tokenData.expires_in),
+    status: 'connected'
+  });
+  replaceSearchConsoleProperties(Number(state.companyId), properties);
+
+  const selected = bestSearchConsoleProperty(getDeveloperCompanyAccess(Number(state.companyId)), properties);
+  if (selected) {
+    setSelectedSearchConsoleProperty(Number(state.companyId), selected);
+  }
+
+  return redirect(res, '/app/?geo=connected');
+}
+
+async function handleSelectGeoProperty(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) return null;
+
+  if (!GEO_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const propertyUrl = normalize(body.propertyUrl);
+
+  if (!propertyUrl) {
+    return sendJson(res, { error: 'Select a Search Console property.' }, 422);
+  }
+
+  const property = listSearchConsoleProperties(context.access.company_id).find((item) => item.site_url === propertyUrl);
+
+  if (!property) {
+    return sendJson(res, { error: 'Property was not found for this workspace.' }, 404);
+  }
+
+  setSelectedSearchConsoleProperty(context.access.company_id, propertyUrl);
+  return sendJson(res, geoDashboardPayload(context.access.company_id));
+}
+
+async function handleSyncGeo(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) return null;
+
+  if (!GEO_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const selected = getSelectedSearchConsoleProperty(context.access.company_id);
+
+  if (!selected) {
+    return sendJson(res, { error: 'Select a Search Console property before syncing.' }, 409);
+  }
+
+  try {
+    const accessToken = await googleAccessTokenForCompany(context.access.company_id);
+    const startDate = dateDaysAgo(30);
+    const endDate = dateDaysAgo(2);
+    const commonBody = { startDate, endDate, rowLimit: 25000 };
+    const countryRows = await searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['country']
+    });
+    const queryRows = await searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['query', 'country', 'page']
+    });
+
+    replaceGeoSnapshots({
+      companyId: context.access.company_id,
+      propertyUrl: selected.site_url,
+      startDate,
+      endDate,
+      countryRows: countryRows.map((row) => ({
+        country: row.keys?.[0] || 'Unknown',
+        clicks: row.clicks,
+        impressions: row.impressions,
+        ctr: row.ctr,
+        position: row.position
+      })),
+      queryRows: queryRows.map((row) => ({
+        query: row.keys?.[0] || '',
+        country: row.keys?.[1] || '',
+        page: row.keys?.[2] || '',
+        clicks: row.clicks,
+        impressions: row.impressions,
+        ctr: row.ctr,
+        position: row.position
+      }))
+    });
+
+    return sendJson(res, geoDashboardPayload(context.access.company_id));
+  } catch (error) {
+    return sendJson(res, { error: error.message || 'Search Console sync failed.' }, 500);
+  }
+}
+
+async function handleDisconnectGeo(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) return null;
+
+  if (!GEO_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  disconnectGoogleConnection(context.access.company_id);
+  return sendJson(res, geoDashboardPayload(context.access.company_id));
 }
 
 async function handleLogin(req, res) {
@@ -1677,6 +2141,30 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/citations') {
       return handleCitations(req, res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/geo') {
+      return handleGeo(req, res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/google/connect') {
+      return handleGoogleConnect(req, res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/google/callback') {
+      return handleGoogleCallback(req, res, url);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/geo/select-property') {
+      return handleSelectGeoProperty(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/geo/sync') {
+      return handleSyncGeo(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/geo/disconnect') {
+      return handleDisconnectGeo(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/settings') {

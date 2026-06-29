@@ -60,6 +60,8 @@ Demo logins and seeded sample workspaces have been removed. Use `/signup` to cre
 - Gemini-generated business fields are saved back into the company profile for later editing
 - Platform-owned Gemini key loaded from `.env`
 - Structured JSON analysis validation before saving
+- GEO Visibility powered by Google Search Console OAuth
+- Search Console country/query/page rows saved in SQLite before rendering dashboard heatmaps and tables
 
 ## Developer setup
 
@@ -89,6 +91,35 @@ GEMINI_RETRY_ATTEMPTS=3
 ```
 
 If `GEMINI_API_KEY` is missing, Hummingbird saves a failed analysis record with a safe error message instead of crashing.
+
+## Google Search Console GEO setup
+
+GEO Visibility uses the user’s Google account to read verified Search Console properties. Set these variables locally and in Vercel:
+
+```bash
+GOOGLE_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_CLIENT_SECRET=your_google_oauth_client_secret
+GOOGLE_REDIRECT_URI=https://your-domain.vercel.app/api/google/callback
+GOOGLE_TOKEN_ENCRYPTION_KEY=use-a-long-random-secret-for-token-encryption
+```
+
+Required Google scope:
+
+```text
+https://www.googleapis.com/auth/webmasters.readonly
+```
+
+In Google Cloud Console:
+
+1. Create/select a Google Cloud project.
+2. Enable the Google Search Console API.
+3. Configure OAuth consent screen.
+4. Create OAuth Client ID as a Web application.
+5. Add authorized redirect URI: `https://your-domain.vercel.app/api/google/callback`.
+6. Add local redirect URI if needed: `http://localhost:3000/api/google/callback`.
+7. Make sure the connecting Google account has access to the website inside Google Search Console.
+
+In Hummingbird, open GEO Visibility, connect Google Search Console, select the verified property, then sync. The app stores Search Console rows in the database and renders the GEO tab from saved data.
 
 ## Vercel database seed
 

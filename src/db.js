@@ -226,6 +226,77 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_aeo_recommendations_company_id
       ON aeo_recommendations(company_id);
 
+    CREATE TABLE IF NOT EXISTS google_connections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL UNIQUE,
+      google_email TEXT,
+      access_token_encrypted TEXT,
+      refresh_token_encrypted TEXT,
+      token_expiry TEXT,
+      status TEXT NOT NULL DEFAULT 'connected',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_google_connections_company_id
+      ON google_connections(company_id);
+
+    CREATE TABLE IF NOT EXISTS search_console_properties (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      site_url TEXT NOT NULL,
+      permission_level TEXT,
+      selected INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(company_id, site_url),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_search_console_properties_company_id
+      ON search_console_properties(company_id);
+
+    CREATE TABLE IF NOT EXISTS geo_search_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_url TEXT NOT NULL,
+      country TEXT NOT NULL,
+      clicks INTEGER NOT NULL DEFAULT 0,
+      impressions INTEGER NOT NULL DEFAULT 0,
+      ctr REAL NOT NULL DEFAULT 0,
+      position REAL NOT NULL DEFAULT 0,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_geo_search_snapshots_company_date
+      ON geo_search_snapshots(company_id, start_date, end_date);
+
+    CREATE TABLE IF NOT EXISTS geo_query_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_url TEXT NOT NULL,
+      query TEXT,
+      country TEXT,
+      page TEXT,
+      clicks INTEGER NOT NULL DEFAULT 0,
+      impressions INTEGER NOT NULL DEFAULT 0,
+      ctr REAL NOT NULL DEFAULT 0,
+      position REAL NOT NULL DEFAULT 0,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_geo_query_snapshots_company_date
+      ON geo_query_snapshots(company_id, start_date, end_date);
+
   `);
 
   const promptColumns = db
@@ -1391,6 +1462,278 @@ function completeCompanyOnboarding(companyId) {
   `).run(companyId);
 }
 
+function upsertGoogleConnection({
+  userId,
+  companyId,
+  googleEmail,
+  accessTokenEncrypted,
+  refreshTokenEncrypted,
+  tokenExpiry,
+  status = 'connected'
+}) {
+  const existing = getGoogleConnection(companyId);
+
+  if (existing) {
+    return db.prepare(`
+      UPDATE google_connections
+      SET
+        user_id = ?,
+        google_email = ?,
+        access_token_encrypted = ?,
+        refresh_token_encrypted = COALESCE(?, refresh_token_encrypted),
+        token_expiry = ?,
+        status = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE company_id = ?
+    `).run(
+      userId,
+      googleEmail,
+      accessTokenEncrypted,
+      refreshTokenEncrypted || null,
+      tokenExpiry,
+      status,
+      companyId
+    );
+  }
+
+  return db.prepare(`
+    INSERT INTO google_connections (
+      user_id,
+      company_id,
+      google_email,
+      access_token_encrypted,
+      refresh_token_encrypted,
+      token_expiry,
+      status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(userId, companyId, googleEmail, accessTokenEncrypted, refreshTokenEncrypted, tokenExpiry, status);
+}
+
+function getGoogleConnection(companyId) {
+  return db.prepare(`
+    SELECT *
+    FROM google_connections
+    WHERE company_id = ?
+    LIMIT 1
+  `).get(companyId);
+}
+
+function updateGoogleConnectionTokens(connectionId, accessTokenEncrypted, refreshTokenEncrypted, tokenExpiry) {
+  return db.prepare(`
+    UPDATE google_connections
+    SET
+      access_token_encrypted = ?,
+      refresh_token_encrypted = COALESCE(?, refresh_token_encrypted),
+      token_expiry = ?,
+      status = 'connected',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(accessTokenEncrypted, refreshTokenEncrypted || null, tokenExpiry, connectionId);
+}
+
+function disconnectGoogleConnection(companyId) {
+  return db.prepare(`
+    UPDATE google_connections
+    SET status = 'disconnected', updated_at = CURRENT_TIMESTAMP
+    WHERE company_id = ?
+  `).run(companyId);
+}
+
+function replaceSearchConsoleProperties(companyId, properties) {
+  const currentSelected = getSelectedSearchConsoleProperty(companyId)?.site_url;
+  const insertProperty = db.prepare(`
+    INSERT INTO search_console_properties (company_id, site_url, permission_level, selected)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(company_id, site_url) DO UPDATE SET
+      permission_level = excluded.permission_level,
+      selected = excluded.selected,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+
+  try {
+    db.exec('BEGIN');
+    db.prepare('DELETE FROM search_console_properties WHERE company_id = ?').run(companyId);
+
+    properties.forEach((property, index) => {
+      const siteUrl = String(property.siteUrl || property.site_url || '').trim();
+
+      if (!siteUrl) {
+        return;
+      }
+
+      insertProperty.run(
+        companyId,
+        siteUrl,
+        property.permissionLevel || property.permission_level || '',
+        siteUrl === currentSelected || (!currentSelected && index === 0) ? 1 : 0
+      );
+    });
+
+    db.exec('COMMIT');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and rethrow the original error.
+    }
+
+    throw error;
+  }
+}
+
+function listSearchConsoleProperties(companyId) {
+  return db.prepare(`
+    SELECT *
+    FROM search_console_properties
+    WHERE company_id = ?
+    ORDER BY selected DESC, site_url ASC
+  `).all(companyId);
+}
+
+function setSelectedSearchConsoleProperty(companyId, propertyUrl) {
+  try {
+    db.exec('BEGIN');
+    db.prepare('UPDATE search_console_properties SET selected = 0, updated_at = CURRENT_TIMESTAMP WHERE company_id = ?').run(companyId);
+    db.prepare(`
+      UPDATE search_console_properties
+      SET selected = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE company_id = ?
+        AND site_url = ?
+    `).run(companyId, propertyUrl);
+    db.exec('COMMIT');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and rethrow the original error.
+    }
+
+    throw error;
+  }
+}
+
+function getSelectedSearchConsoleProperty(companyId) {
+  return db.prepare(`
+    SELECT *
+    FROM search_console_properties
+    WHERE company_id = ?
+      AND selected = 1
+    LIMIT 1
+  `).get(companyId);
+}
+
+function replaceGeoSnapshots({ companyId, propertyUrl, startDate, endDate, countryRows = [], queryRows = [] }) {
+  const insertCountry = db.prepare(`
+    INSERT INTO geo_search_snapshots (
+      company_id,
+      property_url,
+      country,
+      clicks,
+      impressions,
+      ctr,
+      position,
+      start_date,
+      end_date
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertQuery = db.prepare(`
+    INSERT INTO geo_query_snapshots (
+      company_id,
+      property_url,
+      query,
+      country,
+      page,
+      clicks,
+      impressions,
+      ctr,
+      position,
+      start_date,
+      end_date
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  try {
+    db.exec('BEGIN');
+    db.prepare(`
+      DELETE FROM geo_search_snapshots
+      WHERE company_id = ?
+        AND property_url = ?
+        AND start_date = ?
+        AND end_date = ?
+    `).run(companyId, propertyUrl, startDate, endDate);
+    db.prepare(`
+      DELETE FROM geo_query_snapshots
+      WHERE company_id = ?
+        AND property_url = ?
+        AND start_date = ?
+        AND end_date = ?
+    `).run(companyId, propertyUrl, startDate, endDate);
+
+    countryRows.forEach((row) => {
+      insertCountry.run(
+        companyId,
+        propertyUrl,
+        row.country || 'Unknown',
+        Number(row.clicks || 0),
+        Number(row.impressions || 0),
+        Number(row.ctr || 0),
+        Number(row.position || 0),
+        startDate,
+        endDate
+      );
+    });
+
+    queryRows.forEach((row) => {
+      insertQuery.run(
+        companyId,
+        propertyUrl,
+        row.query || '',
+        row.country || '',
+        row.page || '',
+        Number(row.clicks || 0),
+        Number(row.impressions || 0),
+        Number(row.ctr || 0),
+        Number(row.position || 0),
+        startDate,
+        endDate
+      );
+    });
+
+    db.exec('COMMIT');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and rethrow the original error.
+    }
+
+    throw error;
+  }
+}
+
+function listGeoCountrySnapshots(companyId, propertyUrl) {
+  return db.prepare(`
+    SELECT *
+    FROM geo_search_snapshots
+    WHERE company_id = ?
+      AND property_url = COALESCE(?, property_url)
+    ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
+  `).all(companyId, propertyUrl || null);
+}
+
+function listGeoQuerySnapshots(companyId, propertyUrl) {
+  return db.prepare(`
+    SELECT *
+    FROM geo_query_snapshots
+    WHERE company_id = ?
+      AND property_url = COALESCE(?, property_url)
+    ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
+  `).all(companyId, propertyUrl || null);
+}
+
 function createUserCompanyWorkspace({ user, company }) {
   const businessOwnerRole = db
     .prepare('SELECT id FROM roles WHERE role_name = ?')
@@ -1505,6 +1848,17 @@ module.exports = {
   removeCompanyCompetitor,
   upsertCompanyCompetitors,
   updatePromptVisibility,
+  upsertGoogleConnection,
+  getGoogleConnection,
+  updateGoogleConnectionTokens,
+  disconnectGoogleConnection,
+  replaceSearchConsoleProperties,
+  listSearchConsoleProperties,
+  setSelectedSearchConsoleProperty,
+  getSelectedSearchConsoleProperty,
+  replaceGeoSnapshots,
+  listGeoCountrySnapshots,
+  listGeoQuerySnapshots,
   updateCompanyProfile,
   completeCompanyOnboarding,
   createUserCompanyWorkspace
