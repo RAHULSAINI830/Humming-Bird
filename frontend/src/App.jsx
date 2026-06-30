@@ -1816,6 +1816,7 @@ function GeoVisibility({ data, onChange, workspace }) {
   const [mapMode, setMapMode] = useState('world');
   const [selectedCountry, setSelectedCountry] = useState('');
   const [queryFilter, setQueryFilter] = useState('all');
+  const [geoTab, setGeoTab] = useState('performance');
   const countries = data?.countries || [];
   const queries = data?.queries || [];
   const pages = data?.pages || [];
@@ -1960,75 +1961,108 @@ function GeoVisibility({ data, onChange, workspace }) {
 
           {message ? <div className={message.includes('refreshed') || message.includes('disconnected') || message.includes('cleared') ? 'success-notice' : 'notice'}>{message}</div> : null}
 
-          <GeoKpiDeck kpis={kpis} comparison={comparison} dateRange={summary.dateRange} />
+          <GeoSubTabs active={geoTab} onChange={setGeoTab} />
 
-          <DashboardPanel title="Performance analytics" action={summary.dateRange ? `${summary.dateRange.startDate} → ${summary.dateRange.endDate}` : 'Awaiting sync'}>
-            <GeoPerformanceChart rows={performanceSeries} />
-          </DashboardPanel>
+          {geoTab === 'performance' ? (
+            <>
+              <GeoPerformanceOverview rows={performanceSeries} kpis={kpis} comparison={comparison} summary={summary} />
+              <GeoKpiDeck kpis={kpis} comparison={comparison} dateRange={summary.dateRange} compact />
+            </>
+          ) : null}
 
-          <article className="geo-map-card">
-            <div className="dashboard-panel-head">
-              <div>
-                <h2>Geographic heat map</h2>
-                <p>{countries.length ? 'Interactive OpenStreetMap view from saved Search Console country rows.' : 'Connect and sync Search Console to populate the map.'}</p>
-              </div>
-              <div className="geo-map-controls">
-                <div className="geo-mode-toggle">
-                  <button type="button" className={mapMode === 'world' ? 'active' : ''} onClick={() => setMapMode('world')}>World</button>
-                  <button type="button" className={mapMode === 'country' ? 'active' : ''} onClick={() => setMapMode('country')}>Country</button>
-                </div>
-                <select
-                  value={normalizedCountryCode(activeCountry?.country)}
-                  onChange={(event) => {
-                    setSelectedCountry(event.target.value);
-                    setMapMode('country');
-                  }}
-                  disabled={!sortedCountries.length}
-                >
-                  {sortedCountries.length ? sortedCountries.map((country) => (
-                    <option key={`${country.country}-${country.id}`} value={normalizedCountryCode(country.country)}>
-                      {displayCountryName(country)} · {country.impressions} impressions
-                    </option>
-                  )) : <option>No synced countries</option>}
-                </select>
-              </div>
+          {geoTab === 'queries' ? (
+            <>
+              <GeoOpportunitySections opportunities={opportunities} />
+              <DashboardPanel title="Query analysis" action={`${filteredQueries.length} queries`}>
+                <GeoQueryControls value={queryFilter} onChange={setQueryFilter} />
+                <GeoQueryTable rows={filteredQueries} detailed />
+              </DashboardPanel>
+            </>
+          ) : null}
+
+          {geoTab === 'pages' ? (
+            <div className="dashboard-table-grid">
+              <DashboardPanel title="Page performance" action={`${pages.length} URLs`}>
+                <GeoPageTable rows={pages} />
+              </DashboardPanel>
+              <DashboardPanel title="Search appearance" action="Rich result types">
+                <GeoSearchAppearanceTable rows={searchAppearance} />
+              </DashboardPanel>
             </div>
-            <GeoLeafletMap rows={sortedCountries} focusedCountryCode={focusedCountryCode} />
-            {mapMode === 'country' && activeCountry ? <GeoCountryFocus country={activeCountry} /> : null}
-          </article>
+          ) : null}
 
-          <GeoOpportunitySections opportunities={opportunities} />
+          {geoTab === 'countries' ? (
+            <>
+              <article className="geo-map-card">
+                <div className="dashboard-panel-head">
+                  <div>
+                    <h2>Geographic heat map</h2>
+                    <p>{countries.length ? 'Interactive OpenStreetMap view from saved Search Console country rows.' : 'Connect and refresh Search Console to populate the map.'}</p>
+                  </div>
+                  <div className="geo-map-controls">
+                    <div className="geo-mode-toggle">
+                      <button type="button" className={mapMode === 'world' ? 'active' : ''} onClick={() => setMapMode('world')}>World</button>
+                      <button type="button" className={mapMode === 'country' ? 'active' : ''} onClick={() => setMapMode('country')}>Country</button>
+                    </div>
+                    <select
+                      value={normalizedCountryCode(activeCountry?.country)}
+                      onChange={(event) => {
+                        setSelectedCountry(event.target.value);
+                        setMapMode('country');
+                      }}
+                      disabled={!sortedCountries.length}
+                    >
+                      {sortedCountries.length ? sortedCountries.map((country) => (
+                        <option key={`${country.country}-${country.id}`} value={normalizedCountryCode(country.country)}>
+                          {displayCountryName(country)} · {country.impressions} impressions
+                        </option>
+                      )) : <option>No synced countries</option>}
+                    </select>
+                  </div>
+                </div>
+                <GeoLeafletMap rows={sortedCountries} focusedCountryCode={focusedCountryCode} />
+                {mapMode === 'country' && activeCountry ? <GeoCountryFocus country={activeCountry} /> : null}
+              </article>
+              <DashboardPanel title="Country analytics" action="Map + table">
+                <GeoCountryTable rows={countries} />
+              </DashboardPanel>
+            </>
+          ) : null}
 
-          <div className="dashboard-table-grid">
-            <DashboardPanel title="Query analysis" action={`${filteredQueries.length} queries`}>
-              <GeoQueryControls value={queryFilter} onChange={setQueryFilter} />
-              <GeoQueryTable rows={filteredQueries} detailed />
-            </DashboardPanel>
-            <DashboardPanel title="Page performance" action={`${pages.length} URLs`}>
-              <GeoPageTable rows={pages} />
-            </DashboardPanel>
-          </div>
-
-          <div className="dashboard-table-grid">
-            <DashboardPanel title="Device analytics" action="Desktop · Mobile · Tablet">
-              <GeoDeviceTable rows={devices} />
-            </DashboardPanel>
-            <DashboardPanel title="Country analytics" action="Map + table">
-              <GeoCountryTable rows={countries} />
-            </DashboardPanel>
-          </div>
-
-          <div className="dashboard-table-grid">
-            <DashboardPanel title="Search appearance" action="Rich result types">
-              <GeoSearchAppearanceTable rows={searchAppearance} />
-            </DashboardPanel>
-            <DashboardPanel title="Additional SEO data sources" action="Not mocked">
-              <GeoUnsupportedMetrics items={data.unsupportedMetrics || []} />
-            </DashboardPanel>
-          </div>
+          {geoTab === 'technical' ? (
+            <div className="dashboard-table-grid">
+              <DashboardPanel title="Device analytics" action="Desktop · Mobile · Tablet">
+                <GeoDeviceTable rows={devices} />
+              </DashboardPanel>
+              <DashboardPanel title="Additional SEO data sources" action="Not mocked">
+                <GeoUnsupportedMetrics items={data.unsupportedMetrics || []} />
+              </DashboardPanel>
+            </div>
+          ) : null}
         </>
       ) : null}
     </section>
+  );
+}
+
+function GeoSubTabs({ active, onChange }) {
+  const tabs = [
+    ['performance', 'Performance', 'Clicks, impressions, CTR'],
+    ['queries', 'Queries', 'Keywords and opportunities'],
+    ['pages', 'Pages', 'URLs and search appearance'],
+    ['countries', 'Countries', 'Map and markets'],
+    ['technical', 'Technical', 'Devices and extra sources']
+  ];
+
+  return (
+    <div className="geo-subtabs">
+      {tabs.map(([key, label, helper]) => (
+        <button type="button" key={key} className={active === key ? 'active' : ''} onClick={() => onChange(key)}>
+          <strong>{label}</strong>
+          <span>{helper}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -2054,7 +2088,7 @@ function comparisonFmt(value, inverse = false) {
   return `${positive ? '↑' : actual < 0 ? '↓' : '→'} ${Math.abs(actual).toFixed(1)}%`;
 }
 
-function GeoKpiDeck({ kpis, comparison, dateRange }) {
+function GeoKpiDeck({ kpis, comparison, dateRange, compact = false }) {
   const cards = [
     ['Total Clicks', numberFmt(kpis.totalClicks), comparisonFmt(comparison.clicks), 'Google Search Console'],
     ['Total Impressions', numberFmt(kpis.totalImpressions), comparisonFmt(comparison.impressions), 'Google Search Console'],
@@ -2075,7 +2109,7 @@ function GeoKpiDeck({ kpis, comparison, dateRange }) {
   ];
 
   return (
-    <div className="geo-kpi-grid detailed">
+    <div className={`geo-kpi-grid detailed ${compact ? 'compact' : ''}`}>
       {cards.map(([title, value, change, helper]) => (
         <article className="geo-kpi-card" key={title}>
           <p>{title}</p>
@@ -2090,10 +2124,48 @@ function GeoKpiDeck({ kpis, comparison, dateRange }) {
   );
 }
 
-function GeoPerformanceChart({ rows }) {
+function GeoPerformanceOverview({ rows, kpis, comparison, summary }) {
+  return (
+    <article className="gsc-performance-card">
+      <div className="gsc-filter-bar">
+        <div className="gsc-chip-group">
+          {['24 hours', '7 days', '28 days'].map((item) => <button type="button" key={item}>{item}</button>)}
+          <button type="button" className="active">✓ 3 months</button>
+          <button type="button">More⌄</button>
+        </div>
+        <div className="gsc-chip-group">
+          <button type="button">Search type: Web⌄</button>
+          <button type="button">＋ Add filter</button>
+        </div>
+        <span>{summary?.lastSyncedAt ? `Last update: ${summary.lastSyncedAt}` : 'Awaiting first refresh'}</span>
+      </div>
+
+      <div className="gsc-metric-row">
+        <GscMetricCard active tone="blue" label="Total clicks" value={numberFmt(kpis.totalClicks)} change={comparisonFmt(comparison.clicks)} />
+        <GscMetricCard active tone="purple" label="Total impressions" value={numberFmt(kpis.totalImpressions)} change={comparisonFmt(comparison.impressions)} />
+        <GscMetricCard label="Average CTR" value={percentFmt(kpis.averageCtr)} change={comparisonFmt(comparison.ctr)} />
+        <GscMetricCard label="Average position" value={positionFmt(kpis.averagePosition)} change={comparisonFmt(comparison.position)} />
+      </div>
+
+      <GeoPerformanceChart rows={rows} gsc />
+    </article>
+  );
+}
+
+function GscMetricCard({ label, value, change, active = false, tone = '' }) {
+  return (
+    <div className={`gsc-metric-card ${active ? 'active' : ''} ${tone}`}>
+      <span>{active ? '☑' : '☐'} {label}</span>
+      <strong>{value}</strong>
+      {change ? <small>{change}</small> : <small>Compared to previous period</small>}
+    </div>
+  );
+}
+
+function GeoPerformanceChart({ rows, gsc = false }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No performance trend yet" text="Sync Search Console to save daily clicks, impressions, CTR, and position." />;
   const width = 860;
-  const height = 260;
+  const height = gsc ? 360 : 260;
   const metrics = [
     ['clicks', 'Clicks', '#ff9d00'],
     ['impressions', 'Impressions', '#000142']
@@ -2106,16 +2178,16 @@ function GeoPerformanceChart({ rows }) {
   }).join(' ');
 
   return (
-    <div className="geo-chart-wrap">
+    <div className={`geo-chart-wrap ${gsc ? 'gsc-chart' : ''}`}>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Search performance trend">
-        <path d="M30 25V230H835" className="geo-chart-axis" />
-        {[0, 1, 2, 3].map((line) => <path key={line} d={`M30 ${50 + line * 45}H835`} className="geo-chart-grid" />)}
+        <path d={`M30 25V${height - 30}H835`} className="geo-chart-axis" />
+        {[0, 1, 2, 3, 4].map((line) => <path key={line} d={`M30 ${55 + line * ((height - 95) / 4)}H835`} className="geo-chart-grid" />)}
         {metrics.map(([key, label, color]) => (
           <polyline key={key} points={pointsFor(key)} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
         ))}
         {rows.map((row, index) => {
           const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * (width - 60) + 30;
-          return index % Math.ceil(rows.length / 6 || 1) === 0 ? <text key={row.date} x={x} y="252">{row.date?.slice(5) || row.date}</text> : null;
+          return index % Math.ceil(rows.length / 7 || 1) === 0 ? <text key={row.date} x={x} y={height - 8}>{row.date?.slice(5) || row.date}</text> : null;
         })}
       </svg>
       <div className="geo-chart-legend">
