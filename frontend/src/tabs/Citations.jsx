@@ -1,4 +1,4 @@
-import { EmptyInline, PageHeader } from '../components/common';
+import { EmptyInline, Metric, PageHeader } from '../components/common';
 
 export default function Citations({ data, workspace }) {
   const citations = data?.citations || [];

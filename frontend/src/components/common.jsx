@@ -490,6 +490,19 @@ export function DashboardEmptyBlock({ title, text }) {
   );
 }
 
+export function Metric({ title, value, helper, icon, compact = false }) {
+  return (
+    <article className={`metric-card ${compact ? 'compact' : ''}`}>
+      <div className="metric-top">
+        <p>{title}</p>
+        {icon ? <span>{icon}</span> : null}
+      </div>
+      <strong>{value}</strong>
+      {helper ? <small>{helper}</small> : null}
+    </article>
+  );
+}
+
 export function SettingsIcon({ name }) {
   const common = {
     width: 22,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { ChipList, EmptyInline, IconButton, PageHeader, ProviderLogo, SideFormTray, StatusBadge, providerConfigs } from '../components/common';
+import { ChipList, EmptyInline, IconButton, Input, Metric, PageHeader, ProviderLogo, SideFormTray, StatusBadge, providerConfigs } from '../components/common';
 
 export default function Prompts({ data, onChange, workspace }) {
   const prompts = data?.prompts || [];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { IconButton, LogoChip, PageHeader, SideFormTray } from '../components/common';
+import { IconButton, Input, LogoChip, PageHeader, SideFormTray } from '../components/common';
 
 export default function Competitors({ data, onChange, workspace }) {
   const competitors = data?.competitors || [];

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { EmptyInline, LogoChip, PageHeader, SideFormTray, StatusBadge } from '../components/common';
+import { EmptyInline, Input, LogoChip, Metric, PageHeader, SideFormTray, StatusBadge } from '../components/common';
 
 export default function Users({ data, onChange, workspace }) {
   const users = data?.users || [];
