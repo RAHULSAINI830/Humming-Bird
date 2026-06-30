@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './lib/api';
 import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, navItems, readInitialActiveView } from './lib/constants';
-import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, WorkspaceCard } from './components/common';
+import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, WorkspaceCard } from './components/common';
 import Dashboard from './tabs/Dashboard';
 import BusinessAnalysis from './tabs/BusinessAnalysis';
 import AeoRecommendations from './tabs/AeoRecommendations';
