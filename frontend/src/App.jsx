@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-const HUMMINGBIRD_LOGO = '/app/Himmingbird%20ai%20full%20logo.svg';
+const HUMMINGBIRD_LOGO = '/app/hummingbird-logo.svg';
 
 const navItems = [
   ['Dashboard', 'dashboard', '◆'],
@@ -15,6 +15,21 @@ const navItems = [
   ['Users', 'users', '◌'],
   ['Settings', 'settings', '⚙']
 ];
+
+const DEFAULT_ACTIVE_VIEW = 'dashboard';
+const ACTIVE_VIEW_STORAGE_KEY = 'hummingbird.activeView';
+const allowedViewKeys = new Set([...navItems.map(([, view]) => view), 'developer']);
+
+function readInitialActiveView() {
+  if (typeof window === 'undefined') return DEFAULT_ACTIVE_VIEW;
+
+  const hashView = window.location.hash.replace('#', '').trim();
+  const storedView = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+
+  if (allowedViewKeys.has(hashView)) return hashView;
+  if (allowedViewKeys.has(storedView)) return storedView;
+  return DEFAULT_ACTIVE_VIEW;
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -32,7 +47,7 @@ async function api(path, options = {}) {
     error.data = data;
     error.status = response.status;
 
-    if (response.status === 401 && typeof window !== 'undefined') {
+    if (response.status === 401 && path !== '/api/session' && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('hummingbird:auth-expired'));
     }
 
@@ -46,7 +61,7 @@ function App() {
   const [session, setSession] = useState(null);
   const [authMode, setAuthMode] = useState('login');
   const [status, setStatus] = useState('loading');
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveViewState] = useState(readInitialActiveView);
   const [dashboard, setDashboard] = useState(null);
   const [businessAnalysis, setBusinessAnalysis] = useState(null);
   const [aeoRecommendations, setAeoRecommendations] = useState(null);
@@ -61,6 +76,16 @@ function App() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [notice, setNotice] = useState('');
+
+  function setActiveView(view) {
+    const nextView = allowedViewKeys.has(view) ? view : DEFAULT_ACTIVE_VIEW;
+    setActiveViewState(nextView);
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, nextView);
+      window.history.replaceState({}, '', `${window.location.pathname}#${nextView}`);
+    }
+  }
 
   useEffect(() => {
     api('/api/session')
@@ -98,7 +123,7 @@ function App() {
     };
 
     setNotice(geoMessages[geo] || 'Google Search Console setup status updated.');
-    window.history.replaceState({}, '', window.location.pathname);
+    setActiveView('geo');
   }, []);
 
   useEffect(() => {
@@ -177,7 +202,9 @@ function App() {
     await api('/api/auth/logout', { method: 'POST', body: '{}' });
     setSession(null);
     setStatus('guest');
+    setNotice('');
     setDashboard(null);
+    setActiveView(DEFAULT_ACTIVE_VIEW);
   }
 
   async function handleWorkspaceChange(event) {
@@ -228,9 +255,10 @@ function App() {
         mode={authMode}
         setMode={setAuthMode}
         onAuthenticated={(data) => {
+          setNotice('');
           setSession(data);
           setStatus('ready');
-          setActiveView('dashboard');
+          setActiveView(DEFAULT_ACTIVE_VIEW);
         }}
       />
     );
