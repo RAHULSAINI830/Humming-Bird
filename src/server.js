@@ -1354,6 +1354,13 @@ function geoDashboardPayload(companyId) {
       ctr: row.ctr,
       position: row.position
     })),
+    previousPerformanceSeries: previousDateRows.sort((a, b) => String(a.dimension_key).localeCompare(String(b.dimension_key))).map((row) => ({
+      date: row.dimension_key,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position
+    })),
     opportunities: {
       keywordOpportunities,
       lowCtr,

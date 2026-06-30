@@ -10,12 +10,16 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   const [mapMode, setMapMode] = useState('world');
   const [selectedCountry, setSelectedCountry] = useState('');
   const [queryFilter, setQueryFilter] = useState('all');
+  const [performanceRange, setPerformanceRange] = useState('28d');
+  const [visibleMetrics, setVisibleMetrics] = useState(['clicks', 'impressions']);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const countries = data?.countries || [];
   const queries = data?.queries || [];
   const pages = data?.pages || [];
   const devices = data?.devices || [];
   const searchAppearance = data?.searchAppearance || [];
   const performanceSeries = data?.performanceSeries || [];
+  const previousPerformanceSeries = data?.previousPerformanceSeries || [];
   const opportunities = data?.opportunities || {};
   const properties = data?.properties || [];
   const summary = data?.summary || {};
@@ -26,6 +30,9 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   const activeCountry = sortedCountries.find((country) => normalizedCountryCode(country.country) === selectedCountry) || sortedCountries[0] || null;
   const focusedCountryCode = mapMode === 'country' ? normalizedCountryCode(activeCountry?.country) : '';
   const filteredQueries = filterGeoQueries(queries, queryFilter);
+  const filteredPerformanceRows = filterPerformanceRows(performanceSeries, performanceRange);
+  const filteredPreviousRows = filterPerformanceRows(previousPerformanceSeries, performanceRange);
+  const computedPerformance = computedPerformanceStats(filteredPerformanceRows, filteredPreviousRows, kpis, comparison);
 
   async function syncGeo() {
     setLoading('sync');
@@ -156,8 +163,22 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
 
           {geoTab === 'performance' ? (
             <>
-              <GeoPerformanceOverview rows={performanceSeries} kpis={kpis} comparison={comparison} summary={summary} />
-              <GeoKpiDeck kpis={kpis} comparison={comparison} dateRange={summary.dateRange} compact />
+              <GeoPerformanceOverview
+                rows={filteredPerformanceRows}
+                kpis={computedPerformance.kpis}
+                comparison={computedPerformance.comparison}
+                summary={summary}
+                range={performanceRange}
+                onRangeChange={setPerformanceRange}
+                visibleMetrics={visibleMetrics}
+                onToggleMetric={(metric) => setVisibleMetrics((current) => {
+                  if (current.includes(metric) && current.length === 1) return current;
+                  return current.includes(metric) ? current.filter((item) => item !== metric) : [...current, metric];
+                })}
+                showFilterPanel={showFilterPanel}
+                onToggleFilterPanel={() => setShowFilterPanel((current) => !current)}
+              />
+              <GeoKpiDeck kpis={computedPerformance.kpis} comparison={computedPerformance.comparison} dateRange={summary.dateRange} compact />
             </>
           ) : null}
 
@@ -258,6 +279,61 @@ function comparisonFmt(value, inverse = false) {
   return `${positive ? '↑' : actual < 0 ? '↓' : '→'} ${Math.abs(actual).toFixed(1)}%`;
 }
 
+function rangeDays(range) {
+  if (range === '24h') return 1;
+  if (range === '7d') return 7;
+  if (range === '28d') return 28;
+  if (range === '3m') return 90;
+  return 28;
+}
+
+function filterPerformanceRows(rows, range) {
+  const sorted = [...(rows || [])].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const days = rangeDays(range);
+  return sorted.slice(Math.max(0, sorted.length - days));
+}
+
+function aggregatePerformanceRows(rows) {
+  const clicks = (rows || []).reduce((sum, row) => sum + Number(row.clicks || 0), 0);
+  const impressions = (rows || []).reduce((sum, row) => sum + Number(row.impressions || 0), 0);
+  const weightedPosition = (rows || []).reduce((sum, row) => sum + Number(row.position || 0) * Number(row.impressions || 0), 0);
+
+  return {
+    totalClicks: clicks,
+    totalImpressions: impressions,
+    averageCtr: impressions ? clicks / impressions : 0,
+    averagePosition: impressions ? weightedPosition / impressions : 0
+  };
+}
+
+function percentChange(current, previous) {
+  if (previous === null || previous === undefined || Number(previous) === 0) return current ? null : 0;
+  return ((Number(current || 0) - Number(previous || 0)) / Number(previous)) * 100;
+}
+
+function computedPerformanceStats(rows, previousRows, fallbackKpis = {}, fallbackComparison = {}) {
+  if (!rows?.length) {
+    return { kpis: fallbackKpis, comparison: fallbackComparison };
+  }
+
+  const current = aggregatePerformanceRows(rows);
+  const previous = aggregatePerformanceRows(previousRows || []);
+  const hasPrevious = Boolean(previousRows?.length);
+
+  return {
+    kpis: {
+      ...fallbackKpis,
+      ...current
+    },
+    comparison: hasPrevious ? {
+      clicks: percentChange(current.totalClicks, previous.totalClicks),
+      impressions: percentChange(current.totalImpressions, previous.totalImpressions),
+      ctr: percentChange(current.averageCtr, previous.averageCtr),
+      position: previous.averagePosition ? ((previous.averagePosition - current.averagePosition) / previous.averagePosition) * 100 : null
+    } : fallbackComparison
+  };
+}
+
 function GeoKpiDeck({ kpis, comparison, dateRange, compact = false }) {
   const cards = [
     ['Total Clicks', numberFmt(kpis.totalClicks), comparisonFmt(comparison.clicks), 'Google Search Console'],
@@ -294,77 +370,189 @@ function GeoKpiDeck({ kpis, comparison, dateRange, compact = false }) {
   );
 }
 
-function GeoPerformanceOverview({ rows, kpis, comparison, summary }) {
+const PERFORMANCE_RANGE_OPTIONS = [
+  ['24h', '24 hours', 1],
+  ['7d', '7 days', 7],
+  ['28d', '28 days', 28],
+  ['3m', '3 months', 90]
+];
+
+const PERFORMANCE_METRICS = {
+  clicks: { label: 'Total clicks', shortLabel: 'Clicks', color: '#3b82f6', valueKey: 'totalClicks', formatter: numberFmt },
+  impressions: { label: 'Total impressions', shortLabel: 'Impressions', color: '#673ab7', valueKey: 'totalImpressions', formatter: numberFmt },
+  ctr: { label: 'Average CTR', shortLabel: 'CTR', color: '#f97316', valueKey: 'averageCtr', formatter: percentFmt },
+  position: { label: 'Average position', shortLabel: 'Position', color: '#0f766e', valueKey: 'averagePosition', formatter: positionFmt, inverse: true }
+};
+
+function GeoPerformanceOverview({
+  rows,
+  kpis,
+  comparison,
+  summary,
+  range,
+  onRangeChange,
+  visibleMetrics,
+  onToggleMetric,
+  showFilterPanel,
+  onToggleFilterPanel
+}) {
+  const activeRange = PERFORMANCE_RANGE_OPTIONS.find(([key]) => key === range);
+  const savedDays = rows?.length || 0;
+
   return (
     <article className="gsc-performance-card">
       <div className="gsc-filter-bar">
         <div className="gsc-chip-group">
-          {['24 hours', '7 days', '28 days'].map((item) => <button type="button" key={item}>{item}</button>)}
-          <button type="button" className="active">✓ 3 months</button>
-          <button type="button">More⌄</button>
+          {PERFORMANCE_RANGE_OPTIONS.map(([key, label]) => (
+            <button type="button" key={key} className={range === key ? 'active' : ''} onClick={() => onRangeChange(key)}>
+              {range === key ? '✓ ' : ''}{label}
+            </button>
+          ))}
+          <button type="button" onClick={() => onRangeChange('3m')}>More⌄</button>
         </div>
         <div className="gsc-chip-group">
-          <button type="button">Search type: Web⌄</button>
-          <button type="button">＋ Add filter</button>
+          <button type="button" className="active" title="Current Search Console sync uses Web search rows. Image, video, news, and discover can be added in the backend later.">Search type: Web⌄</button>
+          <button type="button" className={showFilterPanel ? 'active' : ''} onClick={onToggleFilterPanel}>＋ Add filter</button>
         </div>
         <span>{summary?.lastSyncedAt ? `Last update: ${summary.lastSyncedAt}` : 'Awaiting first refresh'}</span>
       </div>
 
+      {showFilterPanel ? (
+        <div className="gsc-filter-note">
+          <SettingsIcon name="clipboard" />
+          <div>
+            <strong>Real data filters</strong>
+            <p>Current saved Search Console rows include Web search performance. Country, query, page, device, and appearance filters are available in their GEO child tabs. More search types need a new sync with that Search Console parameter.</p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="gsc-metric-row">
-        <GscMetricCard active tone="blue" label="Total clicks" value={numberFmt(kpis.totalClicks)} change={comparisonFmt(comparison.clicks)} />
-        <GscMetricCard active tone="purple" label="Total impressions" value={numberFmt(kpis.totalImpressions)} change={comparisonFmt(comparison.impressions)} />
-        <GscMetricCard label="Average CTR" value={percentFmt(kpis.averageCtr)} change={comparisonFmt(comparison.ctr)} />
-        <GscMetricCard label="Average position" value={positionFmt(kpis.averagePosition)} change={comparisonFmt(comparison.position)} />
+        {Object.entries(PERFORMANCE_METRICS).map(([key, metric]) => (
+          <GscMetricCard
+            key={key}
+            active={visibleMetrics.includes(key)}
+            color={metric.color}
+            label={metric.label}
+            value={metric.formatter(kpis[metric.valueKey])}
+            change={comparisonFmt(comparison[key], metric.inverse)}
+            onClick={() => onToggleMetric(key)}
+          />
+        ))}
       </div>
 
-      <GeoPerformanceChart rows={rows} gsc />
+      <div className="gsc-chart-context">
+        <strong>{activeRange?.[1] || 'Selected range'}</strong>
+        <span>{savedDays ? `${savedDays} saved daily rows rendered from the database` : 'No saved daily rows yet'}</span>
+      </div>
+
+      <GeoPerformanceChart rows={rows} visibleMetrics={visibleMetrics} />
     </article>
   );
 }
 
-function GscMetricCard({ label, value, change, active = false, tone = '' }) {
+function GscMetricCard({ label, value, change, active = false, color, onClick }) {
   return (
-    <div className={`gsc-metric-card ${active ? 'active' : ''} ${tone}`}>
+    <button type="button" className={`gsc-metric-card ${active ? 'active' : ''}`} style={{ '--metric-color': color }} onClick={onClick}>
       <span>{active ? '☑' : '☐'} {label}</span>
       <strong>{value}</strong>
       {change ? <small>{change}</small> : <small>Compared to previous period</small>}
-    </div>
+    </button>
   );
 }
 
-function GeoPerformanceChart({ rows, gsc = false }) {
+function GeoPerformanceChart({ rows, visibleMetrics }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
   if (!rows?.length) return <DashboardEmptyBlock title="No performance trend yet" text="Sync Search Console to save daily clicks, impressions, CTR, and position." />;
-  const width = 860;
-  const height = gsc ? 360 : 260;
-  const metrics = [
-    ['clicks', 'Clicks', '#ff9d00'],
-    ['impressions', 'Impressions', '#000142']
-  ];
-  const max = Math.max(...rows.flatMap((row) => [Number(row.clicks || 0), Number(row.impressions || 0)]), 1);
-  const pointsFor = (key) => rows.map((row, index) => {
-    const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * (width - 60) + 30;
-    const y = height - 30 - (Number(row[key] || 0) / max) * (height - 70);
-    return `${x},${y}`;
-  }).join(' ');
+  const width = 960;
+  const height = 390;
+  const plot = { left: 54, right: 28, top: 34, bottom: 48 };
+  const innerWidth = width - plot.left - plot.right;
+  const innerHeight = height - plot.top - plot.bottom;
+  const activeMetrics = visibleMetrics.length ? visibleMetrics : ['clicks'];
+  const xFor = (index) => rows.length === 1 ? plot.left + innerWidth / 2 : plot.left + (index / (rows.length - 1)) * innerWidth;
+  const valueFor = (row, key) => {
+    if (key === 'ctr') return Number(row.ctr || 0) * 100;
+    return Number(row[key] || 0);
+  };
+  const domainFor = (key) => {
+    const values = rows.map((row) => valueFor(row, key));
+    const max = Math.max(...values, 0);
+    const min = Math.min(...values, 0);
+    if (max === min) return { min: 0, max: max || 1 };
+    return { min, max };
+  };
+  const yFor = (row, key) => {
+    const metric = PERFORMANCE_METRICS[key];
+    const { min, max } = domainFor(key);
+    const value = valueFor(row, key);
+    const ratio = (value - min) / (max - min || 1);
+    const adjusted = metric.inverse ? ratio : ratio;
+    return plot.top + innerHeight - adjusted * innerHeight;
+  };
+  const pathFor = (key) => rows.map((row, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(2)} ${yFor(row, key).toFixed(2)}`).join(' ');
+  const hoverRow = hoverIndex === null ? null : rows[hoverIndex];
+  const hoverX = hoverIndex === null ? 0 : xFor(hoverIndex);
+  const yTicks = [0, 1, 2, 3, 4];
+  const labelStep = Math.max(1, Math.ceil(rows.length / 8));
 
   return (
-    <div className={`geo-chart-wrap ${gsc ? 'gsc-chart' : ''}`}>
+    <div className="geo-chart-wrap gsc-chart clean">
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Search performance trend">
-        <path d={`M30 25V${height - 30}H835`} className="geo-chart-axis" />
-        {[0, 1, 2, 3, 4].map((line) => <path key={line} d={`M30 ${55 + line * ((height - 95) / 4)}H835`} className="geo-chart-grid" />)}
-        {metrics.map(([key, label, color]) => (
-          <polyline key={key} points={pointsFor(key)} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        <defs>
+          <linearGradient id="geoChartFade" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#fff7ed" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <rect x={plot.left} y={plot.top} width={innerWidth} height={innerHeight} fill="url(#geoChartFade)" rx="16" />
+        {yTicks.map((line) => {
+          const y = plot.top + line * (innerHeight / 4);
+          return <path key={line} d={`M${plot.left} ${y}H${width - plot.right}`} className="geo-chart-grid" />;
+        })}
+        <path d={`M${plot.left} ${plot.top}V${height - plot.bottom}H${width - plot.right}`} className="geo-chart-axis" />
+        {activeMetrics.map((key) => (
+          <path key={key} d={pathFor(key)} fill="none" stroke={PERFORMANCE_METRICS[key].color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
         ))}
         {rows.map((row, index) => {
-          const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * (width - 60) + 30;
-          return index % Math.ceil(rows.length / 7 || 1) === 0 ? <text key={row.date} x={x} y={height - 8}>{row.date?.slice(5) || row.date}</text> : null;
+          const x = xFor(index);
+          return (
+            <g key={row.date || index}>
+              <rect
+                x={x - Math.max(6, innerWidth / rows.length / 2)}
+                y={plot.top}
+                width={Math.max(12, innerWidth / rows.length)}
+                height={innerHeight}
+                fill="transparent"
+                onMouseEnter={() => setHoverIndex(index)}
+                onMouseLeave={() => setHoverIndex(null)}
+              />
+              {index % labelStep === 0 ? <text x={x} y={height - 14}>{row.date?.slice(5) || row.date}</text> : null}
+            </g>
+          );
         })}
+        {hoverRow ? (
+          <g>
+            <path d={`M${hoverX} ${plot.top}V${height - plot.bottom}`} className="geo-chart-hover-line" />
+            {activeMetrics.map((key) => <circle key={key} cx={hoverX} cy={yFor(hoverRow, key)} r="5" fill={PERFORMANCE_METRICS[key].color} stroke="#fff" strokeWidth="2" />)}
+          </g>
+        ) : null}
       </svg>
+      {hoverRow ? (
+        <div className="geo-chart-tooltip">
+          <strong>{hoverRow.date}</strong>
+          {activeMetrics.map((key) => (
+            <span key={key}>
+              <i style={{ background: PERFORMANCE_METRICS[key].color }} />
+              {PERFORMANCE_METRICS[key].shortLabel}: {key === 'ctr' ? percentFmt(hoverRow.ctr) : key === 'position' ? positionFmt(hoverRow.position) : numberFmt(hoverRow[key])}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="geo-chart-legend">
-        <span><i style={{ background: '#ff9d00' }} />Clicks</span>
-        <span><i style={{ background: '#000142' }} />Impressions</span>
-        <span>CTR {percentFmt(rows.at(-1)?.ctr)}</span>
-        <span>Avg position {positionFmt(rows.at(-1)?.position)}</span>
+        {activeMetrics.map((key) => <span key={key}><i style={{ background: PERFORMANCE_METRICS[key].color }} />{PERFORMANCE_METRICS[key].shortLabel}</span>)}
+        <span>Latest CTR {percentFmt(rows.at(-1)?.ctr)}</span>
+        <span>Latest position {positionFmt(rows.at(-1)?.position)}</span>
       </div>
     </div>
   );
