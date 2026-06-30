@@ -1557,7 +1557,12 @@ function updateGoogleConnectionTokens(connectionId, accessTokenEncrypted, refres
 function disconnectGoogleConnection(companyId) {
   return db.prepare(`
     UPDATE google_connections
-    SET status = 'disconnected', updated_at = CURRENT_TIMESTAMP
+    SET
+      status = 'disconnected',
+      access_token_encrypted = NULL,
+      refresh_token_encrypted = NULL,
+      token_expiry = NULL,
+      updated_at = CURRENT_TIMESTAMP
     WHERE company_id = ?
   `).run(companyId);
 }
@@ -1821,6 +1826,36 @@ function listGeoDimensionSnapshots(companyId, propertyUrl, dimensionType, period
   `).all(companyId, propertyUrl || null, dimensionType, periodLabel);
 }
 
+function clearGeoSnapshots(companyId, propertyUrl = '') {
+  try {
+    db.exec('BEGIN');
+    db.prepare(`
+      DELETE FROM geo_search_snapshots
+      WHERE company_id = ?
+        AND property_url = COALESCE(NULLIF(?, ''), property_url)
+    `).run(companyId, propertyUrl || '');
+    db.prepare(`
+      DELETE FROM geo_query_snapshots
+      WHERE company_id = ?
+        AND property_url = COALESCE(NULLIF(?, ''), property_url)
+    `).run(companyId, propertyUrl || '');
+    db.prepare(`
+      DELETE FROM geo_dimension_snapshots
+      WHERE company_id = ?
+        AND property_url = COALESCE(NULLIF(?, ''), property_url)
+    `).run(companyId, propertyUrl || '');
+    db.exec('COMMIT');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and rethrow the original error.
+    }
+
+    throw error;
+  }
+}
+
 function createUserCompanyWorkspace({ user, company }) {
   const businessOwnerRole = db
     .prepare('SELECT id FROM roles WHERE role_name = ?')
@@ -1947,6 +1982,7 @@ module.exports = {
   listGeoCountrySnapshots,
   listGeoQuerySnapshots,
   listGeoDimensionSnapshots,
+  clearGeoSnapshots,
   updateCompanyProfile,
   completeCompanyOnboarding,
   createUserCompanyWorkspace

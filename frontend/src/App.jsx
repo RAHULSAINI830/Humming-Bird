@@ -1839,7 +1839,7 @@ function GeoVisibility({ data, onChange, workspace }) {
     try {
       const result = await api('/api/geo/sync', { method: 'POST', body: '{}' });
       onChange(result);
-      setMessage('Search Console GEO data synced and saved.');
+      setMessage('Search Console data refreshed. Old saved rows for this property were replaced.');
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -1848,7 +1848,7 @@ function GeoVisibility({ data, onChange, workspace }) {
   }
 
   async function disconnect() {
-    const confirmed = window.confirm('Disconnect Google Search Console for this workspace? Saved GEO rows will stay in the database.');
+    const confirmed = window.confirm('Disconnect Google Search Console for this workspace? Saved rows will be hidden until you reconnect. Use Clear saved data if you want to delete them.');
     if (!confirmed) return;
     setLoading('disconnect');
     setMessage('');
@@ -1856,6 +1856,22 @@ function GeoVisibility({ data, onChange, workspace }) {
       const result = await api('/api/geo/disconnect', { method: 'POST', body: '{}' });
       onChange(result);
       setMessage('Search Console disconnected.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading('');
+    }
+  }
+
+  async function clearSavedGeoData() {
+    const confirmed = window.confirm('Clear saved GEO data for this selected property? This deletes the stored Search Console rows from the database.');
+    if (!confirmed) return;
+    setLoading('clear');
+    setMessage('');
+    try {
+      const result = await api('/api/geo/clear', { method: 'POST', body: '{}' });
+      onChange(result);
+      setMessage('Saved GEO data cleared for this property.');
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -1888,7 +1904,7 @@ function GeoVisibility({ data, onChange, workspace }) {
         workspace={workspace}
         action={canManage && data?.connected ? (
           <button type="button" className="primary-button slim" onClick={syncGeo} disabled={loading === 'sync'}>
-            {loading === 'sync' ? 'Syncing…' : 'Sync Search Console'}
+            {loading === 'sync' ? 'Refreshing…' : 'Refresh Search Console'}
           </button>
         ) : null}
       />
@@ -1918,7 +1934,7 @@ function GeoVisibility({ data, onChange, workspace }) {
             <div>
               <p className="eyebrow">Connected account</p>
               <h2>{data.connection?.google_email || 'Google account connected'}</h2>
-              <p>{summary.lastSyncedAt ? `Last synced on ${summary.lastSyncedAt}` : 'No Search Console sync has been saved yet.'}</p>
+              <p>{summary.lastSyncedAt ? `Last refreshed on ${summary.lastSyncedAt}` : 'No Search Console refresh has been saved yet.'}</p>
             </div>
             <div className="geo-toolbar-actions">
               <label>
@@ -1929,11 +1945,20 @@ function GeoVisibility({ data, onChange, workspace }) {
                   ))}
                 </select>
               </label>
-              {canManage ? <button type="button" className="ghost-danger-button" onClick={disconnect} disabled={loading === 'disconnect'}>{loading === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</button> : null}
+              {canManage ? (
+                <>
+                  <button type="button" className="ghost-neutral-button" onClick={clearSavedGeoData} disabled={loading === 'clear'}>
+                    {loading === 'clear' ? 'Clearing…' : 'Clear saved data'}
+                  </button>
+                  <button type="button" className="ghost-danger-button" onClick={disconnect} disabled={loading === 'disconnect'}>
+                    {loading === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+                  </button>
+                </>
+              ) : null}
             </div>
           </article>
 
-          {message ? <div className={message.includes('synced') || message.includes('disconnected') ? 'success-notice' : 'notice'}>{message}</div> : null}
+          {message ? <div className={message.includes('refreshed') || message.includes('disconnected') || message.includes('cleared') ? 'success-notice' : 'notice'}>{message}</div> : null}
 
           <GeoKpiDeck kpis={kpis} comparison={comparison} dateRange={summary.dateRange} />
 

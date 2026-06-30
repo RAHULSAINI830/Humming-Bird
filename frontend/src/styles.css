@@ -2101,6 +2101,21 @@ button {
   font-weight: 900;
 }
 
+.ghost-neutral-button {
+  height: 52px;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  padding: 0 18px;
+  color: var(--primary);
+  background: #ffffff;
+  font-weight: 900;
+}
+
+.ghost-neutral-button:hover {
+  border-color: rgba(255, 157, 0, 0.55);
+  background: #fff7ec;
+}
+
 .geo-kpi-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

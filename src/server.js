@@ -50,6 +50,7 @@ const {
   listGeoCountrySnapshots,
   listGeoQuerySnapshots,
   listGeoDimensionSnapshots,
+  clearGeoSnapshots,
   completeCompanyOnboarding,
   createUserCompanyWorkspace,
   listAllCompaniesForDeveloper,
@@ -1203,16 +1204,17 @@ function geoDashboardPayload(companyId) {
   const connection = getGoogleConnection(companyId);
   const properties = listSearchConsoleProperties(companyId);
   const selected = getSelectedSearchConsoleProperty(companyId) || properties[0] || null;
+  const isConnected = Boolean(connection && connection.status === 'connected');
   const propertyUrl = selected?.site_url || '';
-  const countryRows = latestCreatedRows(listGeoCountrySnapshots(companyId, propertyUrl));
-  const queryRows = latestCreatedRows(listGeoQuerySnapshots(companyId, propertyUrl));
-  const dateRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date'));
-  const pageRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page'));
-  const deviceRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'device'));
-  const searchAppearanceRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'searchAppearance'));
-  const previousQueryRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'query', 'previous'));
-  const previousPageRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page', 'previous'));
-  const previousDateRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date', 'previous'));
+  const countryRows = isConnected ? latestCreatedRows(listGeoCountrySnapshots(companyId, propertyUrl)) : [];
+  const queryRows = isConnected ? latestCreatedRows(listGeoQuerySnapshots(companyId, propertyUrl)) : [];
+  const dateRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date')) : [];
+  const pageRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page')) : [];
+  const deviceRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'device')) : [];
+  const searchAppearanceRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'searchAppearance')) : [];
+  const previousQueryRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'query', 'previous')) : [];
+  const previousPageRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page', 'previous')) : [];
+  const previousDateRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date', 'previous')) : [];
   const totals = aggregateRows(dateRows.length ? dateRows : countryRows);
   const previousTotals = aggregateRows(previousDateRows);
   const previousQueryMap = byKey(previousQueryRows);
@@ -1296,7 +1298,7 @@ function geoDashboardPayload(companyId) {
 
   return {
     companyId,
-    connected: Boolean(connection && connection.status === 'connected'),
+    connected: isConnected,
     connection: connection ? {
       google_email: connection.google_email,
       status: connection.status,
@@ -1585,6 +1587,8 @@ async function handleSyncGeo(req, res) {
       })
     ]);
 
+    clearGeoSnapshots(context.access.company_id, selected.site_url);
+
     replaceGeoSnapshots({
       companyId: context.access.company_id,
       propertyUrl: selected.site_url,
@@ -1646,6 +1650,20 @@ async function handleDisconnectGeo(req, res) {
   }
 
   disconnectGoogleConnection(context.access.company_id);
+  return sendJson(res, geoDashboardPayload(context.access.company_id));
+}
+
+async function handleClearGeoData(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) return null;
+
+  if (!GEO_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const selected = getSelectedSearchConsoleProperty(context.access.company_id);
+  clearGeoSnapshots(context.access.company_id, selected?.site_url || '');
   return sendJson(res, geoDashboardPayload(context.access.company_id));
 }
 
@@ -2601,6 +2619,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/geo/disconnect') {
       return handleDisconnectGeo(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/geo/clear') {
+      return handleClearGeoData(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/settings') {
