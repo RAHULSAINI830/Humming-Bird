@@ -297,6 +297,28 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_geo_query_snapshots_company_date
       ON geo_query_snapshots(company_id, start_date, end_date);
 
+    CREATE TABLE IF NOT EXISTS geo_dimension_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      property_url TEXT NOT NULL,
+      dimension_type TEXT NOT NULL,
+      dimension_key TEXT,
+      dimension_key_2 TEXT,
+      dimension_key_3 TEXT,
+      clicks INTEGER NOT NULL DEFAULT 0,
+      impressions INTEGER NOT NULL DEFAULT 0,
+      ctr REAL NOT NULL DEFAULT 0,
+      position REAL NOT NULL DEFAULT 0,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      period_label TEXT NOT NULL DEFAULT 'current',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_geo_dimension_snapshots_company_type
+      ON geo_dimension_snapshots(company_id, property_url, dimension_type, period_label);
+
   `);
 
   const promptColumns = db
@@ -1623,7 +1645,16 @@ function getSelectedSearchConsoleProperty(companyId) {
   `).get(companyId);
 }
 
-function replaceGeoSnapshots({ companyId, propertyUrl, startDate, endDate, countryRows = [], queryRows = [] }) {
+function replaceGeoSnapshots({
+  companyId,
+  propertyUrl,
+  startDate,
+  endDate,
+  countryRows = [],
+  queryRows = [],
+  dimensionRows = [],
+  periodLabel = 'current'
+}) {
   const insertCountry = db.prepare(`
     INSERT INTO geo_search_snapshots (
       company_id,
@@ -1654,6 +1685,24 @@ function replaceGeoSnapshots({ companyId, propertyUrl, startDate, endDate, count
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const insertDimension = db.prepare(`
+    INSERT INTO geo_dimension_snapshots (
+      company_id,
+      property_url,
+      dimension_type,
+      dimension_key,
+      dimension_key_2,
+      dimension_key_3,
+      clicks,
+      impressions,
+      ctr,
+      position,
+      start_date,
+      end_date,
+      period_label
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
 
   try {
     db.exec('BEGIN');
@@ -1671,6 +1720,14 @@ function replaceGeoSnapshots({ companyId, propertyUrl, startDate, endDate, count
         AND start_date = ?
         AND end_date = ?
     `).run(companyId, propertyUrl, startDate, endDate);
+    db.prepare(`
+      DELETE FROM geo_dimension_snapshots
+      WHERE company_id = ?
+        AND property_url = ?
+        AND start_date = ?
+        AND end_date = ?
+        AND period_label = ?
+    `).run(companyId, propertyUrl, startDate, endDate, periodLabel);
 
     countryRows.forEach((row) => {
       insertCountry.run(
@@ -1699,6 +1756,24 @@ function replaceGeoSnapshots({ companyId, propertyUrl, startDate, endDate, count
         Number(row.position || 0),
         startDate,
         endDate
+      );
+    });
+
+    dimensionRows.forEach((row) => {
+      insertDimension.run(
+        companyId,
+        propertyUrl,
+        row.dimension_type || row.type || 'unknown',
+        row.dimension_key || row.key || '',
+        row.dimension_key_2 || row.key2 || '',
+        row.dimension_key_3 || row.key3 || '',
+        Number(row.clicks || 0),
+        Number(row.impressions || 0),
+        Number(row.ctr || 0),
+        Number(row.position || 0),
+        startDate,
+        endDate,
+        periodLabel
       );
     });
 
@@ -1732,6 +1807,18 @@ function listGeoQuerySnapshots(companyId, propertyUrl) {
       AND property_url = COALESCE(?, property_url)
     ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
   `).all(companyId, propertyUrl || null);
+}
+
+function listGeoDimensionSnapshots(companyId, propertyUrl, dimensionType, periodLabel = 'current') {
+  return db.prepare(`
+    SELECT *
+    FROM geo_dimension_snapshots
+    WHERE company_id = ?
+      AND property_url = COALESCE(?, property_url)
+      AND dimension_type = ?
+      AND period_label = ?
+    ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
+  `).all(companyId, propertyUrl || null, dimensionType, periodLabel);
 }
 
 function createUserCompanyWorkspace({ user, company }) {
@@ -1859,6 +1946,7 @@ module.exports = {
   replaceGeoSnapshots,
   listGeoCountrySnapshots,
   listGeoQuerySnapshots,
+  listGeoDimensionSnapshots,
   updateCompanyProfile,
   completeCompanyOnboarding,
   createUserCompanyWorkspace

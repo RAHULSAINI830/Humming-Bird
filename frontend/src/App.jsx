@@ -1815,14 +1815,23 @@ function GeoVisibility({ data, onChange, workspace }) {
   const [message, setMessage] = useState('');
   const [mapMode, setMapMode] = useState('world');
   const [selectedCountry, setSelectedCountry] = useState('');
+  const [queryFilter, setQueryFilter] = useState('all');
   const countries = data?.countries || [];
   const queries = data?.queries || [];
+  const pages = data?.pages || [];
+  const devices = data?.devices || [];
+  const searchAppearance = data?.searchAppearance || [];
+  const performanceSeries = data?.performanceSeries || [];
+  const opportunities = data?.opportunities || {};
   const properties = data?.properties || [];
   const summary = data?.summary || {};
+  const kpis = data?.kpis || {};
+  const comparison = data?.comparison || {};
   const canManage = Boolean(data?.canManage);
   const sortedCountries = [...countries].sort((a, b) => Number(b.impressions || 0) - Number(a.impressions || 0));
   const activeCountry = sortedCountries.find((country) => normalizedCountryCode(country.country) === selectedCountry) || sortedCountries[0] || null;
   const focusedCountryCode = mapMode === 'country' ? normalizedCountryCode(activeCountry?.country) : '';
+  const filteredQueries = filterGeoQueries(queries, queryFilter);
 
   async function syncGeo() {
     setLoading('sync');
@@ -1926,13 +1935,11 @@ function GeoVisibility({ data, onChange, workspace }) {
 
           {message ? <div className={message.includes('synced') || message.includes('disconnected') ? 'success-notice' : 'notice'}>{message}</div> : null}
 
-          <div className="geo-kpi-grid">
-            <Metric title="Countries" value={summary.countries ?? 0} helper="Markets with search impressions" />
-            <Metric title="Clicks" value={summary.clicks ?? 0} helper={summary.dateRange ? `${summary.dateRange.startDate} → ${summary.dateRange.endDate}` : 'Awaiting sync'} />
-            <Metric title="Impressions" value={summary.impressions ?? 0} helper="Total GSC impressions" />
-            <Metric title="Average CTR" value={`${((summary.ctr || 0) * 100).toFixed(2)}%`} helper="Clicks divided by impressions" />
-            <Metric title="Avg Position" value={summary.position ? summary.position.toFixed(1) : 'NA'} helper="Weighted by impressions" />
-          </div>
+          <GeoKpiDeck kpis={kpis} comparison={comparison} dateRange={summary.dateRange} />
+
+          <DashboardPanel title="Performance analytics" action={summary.dateRange ? `${summary.dateRange.startDate} → ${summary.dateRange.endDate}` : 'Awaiting sync'}>
+            <GeoPerformanceChart rows={performanceSeries} />
+          </DashboardPanel>
 
           <article className="geo-map-card">
             <div className="dashboard-panel-head">
@@ -1965,17 +1972,211 @@ function GeoVisibility({ data, onChange, workspace }) {
             {mapMode === 'country' && activeCountry ? <GeoCountryFocus country={activeCountry} /> : null}
           </article>
 
+          <GeoOpportunitySections opportunities={opportunities} />
+
           <div className="dashboard-table-grid">
-            <DashboardPanel title="Top countries" action="By impressions">
+            <DashboardPanel title="Query analysis" action={`${filteredQueries.length} queries`}>
+              <GeoQueryControls value={queryFilter} onChange={setQueryFilter} />
+              <GeoQueryTable rows={filteredQueries} detailed />
+            </DashboardPanel>
+            <DashboardPanel title="Page performance" action={`${pages.length} URLs`}>
+              <GeoPageTable rows={pages} />
+            </DashboardPanel>
+          </div>
+
+          <div className="dashboard-table-grid">
+            <DashboardPanel title="Device analytics" action="Desktop · Mobile · Tablet">
+              <GeoDeviceTable rows={devices} />
+            </DashboardPanel>
+            <DashboardPanel title="Country analytics" action="Map + table">
               <GeoCountryTable rows={countries} />
             </DashboardPanel>
-            <DashboardPanel title="Top queries and pages" action="By impressions">
-              <GeoQueryTable rows={queries} />
+          </div>
+
+          <div className="dashboard-table-grid">
+            <DashboardPanel title="Search appearance" action="Rich result types">
+              <GeoSearchAppearanceTable rows={searchAppearance} />
+            </DashboardPanel>
+            <DashboardPanel title="Additional SEO data sources" action="Not mocked">
+              <GeoUnsupportedMetrics items={data.unsupportedMetrics || []} />
             </DashboardPanel>
           </div>
         </>
       ) : null}
     </section>
+  );
+}
+
+function numberFmt(value) {
+  if (value === null || value === undefined || value === '') return 'Not connected';
+  return Number(value || 0).toLocaleString();
+}
+
+function percentFmt(value) {
+  if (value === null || value === undefined || value === '') return 'Not connected';
+  return `${(Number(value || 0) * 100).toFixed(2)}%`;
+}
+
+function positionFmt(value) {
+  if (!value) return 'NA';
+  return Number(value).toFixed(1);
+}
+
+function comparisonFmt(value, inverse = false) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return null;
+  const actual = inverse ? Number(value) : Number(value);
+  const positive = actual > 0;
+  return `${positive ? '↑' : actual < 0 ? '↓' : '→'} ${Math.abs(actual).toFixed(1)}%`;
+}
+
+function GeoKpiDeck({ kpis, comparison, dateRange }) {
+  const cards = [
+    ['Total Clicks', numberFmt(kpis.totalClicks), comparisonFmt(comparison.clicks), 'Google Search Console'],
+    ['Total Impressions', numberFmt(kpis.totalImpressions), comparisonFmt(comparison.impressions), 'Google Search Console'],
+    ['Average CTR', percentFmt(kpis.averageCtr), comparisonFmt(comparison.ctr), 'Clicks / impressions'],
+    ['Average Position', positionFmt(kpis.averagePosition), comparisonFmt(comparison.position), 'Lower is better'],
+    ['Indexed Pages', numberFmt(kpis.indexedPages), null, 'Requires URL Inspection'],
+    ['Valid Pages', numberFmt(kpis.validPages), null, 'Requires indexing source'],
+    ['Crawled Pages', numberFmt(kpis.crawledPages), null, 'Requires crawl stats'],
+    ['Not Indexed Pages', numberFmt(kpis.notIndexedPages), null, 'Requires index coverage'],
+    ['Search Traffic Value', numberFmt(kpis.searchTrafficValue), null, 'Optional CPC provider'],
+    ['New Pages Indexed', numberFmt(kpis.newPagesIndexed), null, 'Requires index history'],
+    ['Lost Indexed Pages', numberFmt(kpis.lostIndexedPages), null, 'Requires index history'],
+    ['Search Queries', numberFmt(kpis.searchQueries), null, 'Synced queries'],
+    ['Ranking Keywords', numberFmt(kpis.rankingKeywords), null, 'Queries with impressions'],
+    ['Mobile Usability Issues', numberFmt(kpis.mobileUsabilityIssues), null, 'Requires mobile API'],
+    ['Core Web Vitals', kpis.coreWebVitalsStatus || 'Not connected', null, 'Requires PageSpeed/CrUX'],
+    ['SEO Health Score', kpis.seoScore !== undefined ? `${kpis.seoScore}/100` : 'NA', null, dateRange ? `${dateRange.startDate} → ${dateRange.endDate}` : 'Awaiting sync']
+  ];
+
+  return (
+    <div className="geo-kpi-grid detailed">
+      {cards.map(([title, value, change, helper]) => (
+        <article className="geo-kpi-card" key={title}>
+          <p>{title}</p>
+          <strong>{value}</strong>
+          <div>
+            {change ? <span className={change.includes('↑') ? 'positive' : change.includes('↓') ? 'negative' : ''}>{change}</span> : null}
+            <small>{helper}</small>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function GeoPerformanceChart({ rows }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No performance trend yet" text="Sync Search Console to save daily clicks, impressions, CTR, and position." />;
+  const width = 860;
+  const height = 260;
+  const metrics = [
+    ['clicks', 'Clicks', '#ff9d00'],
+    ['impressions', 'Impressions', '#000142']
+  ];
+  const max = Math.max(...rows.flatMap((row) => [Number(row.clicks || 0), Number(row.impressions || 0)]), 1);
+  const pointsFor = (key) => rows.map((row, index) => {
+    const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * (width - 60) + 30;
+    const y = height - 30 - (Number(row[key] || 0) / max) * (height - 70);
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <div className="geo-chart-wrap">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Search performance trend">
+        <path d="M30 25V230H835" className="geo-chart-axis" />
+        {[0, 1, 2, 3].map((line) => <path key={line} d={`M30 ${50 + line * 45}H835`} className="geo-chart-grid" />)}
+        {metrics.map(([key, label, color]) => (
+          <polyline key={key} points={pointsFor(key)} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        ))}
+        {rows.map((row, index) => {
+          const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * (width - 60) + 30;
+          return index % Math.ceil(rows.length / 6 || 1) === 0 ? <text key={row.date} x={x} y="252">{row.date?.slice(5) || row.date}</text> : null;
+        })}
+      </svg>
+      <div className="geo-chart-legend">
+        <span><i style={{ background: '#ff9d00' }} />Clicks</span>
+        <span><i style={{ background: '#000142' }} />Impressions</span>
+        <span>CTR {percentFmt(rows.at(-1)?.ctr)}</span>
+        <span>Avg position {positionFmt(rows.at(-1)?.position)}</span>
+      </div>
+    </div>
+  );
+}
+
+function filterGeoQueries(rows, filter) {
+  return (rows || []).filter((row) => {
+    const position = Number(row.position || 0);
+    const ctr = Number(row.ctr || 0);
+    const impressions = Number(row.impressions || 0);
+    if (filter === 'growing') return row.status === 'Growing';
+    if (filter === 'declining') return row.status === 'Declining';
+    if (filter === 'new') return row.status === 'New';
+    if (filter === 'lowCtr') return ctr < 0.02 && impressions >= 50;
+    if (filter === 'highImpression') return impressions >= 100;
+    if (filter === 'pos1to3') return position <= 3;
+    if (filter === 'pos4to10') return position > 3 && position <= 10;
+    if (filter === 'pos11to20') return position > 10 && position <= 20;
+    return true;
+  });
+}
+
+function GeoQueryControls({ value, onChange }) {
+  const options = [
+    ['all', 'All'],
+    ['growing', 'Growing'],
+    ['declining', 'Declining'],
+    ['new', 'New'],
+    ['lowCtr', 'Low CTR'],
+    ['highImpression', 'High impression'],
+    ['pos1to3', 'Position 1–3'],
+    ['pos4to10', 'Position 4–10'],
+    ['pos11to20', 'Position 11–20']
+  ];
+
+  return (
+    <div className="geo-filter-row">
+      {options.map(([key, label]) => (
+        <button type="button" className={value === key ? 'active' : ''} onClick={() => onChange(key)} key={key}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+function GeoOpportunitySections({ opportunities }) {
+  return (
+    <div className="geo-opportunity-grid">
+      <DashboardPanel title="Keyword opportunity finder" action="Positions 8–20">
+        <GeoMiniOpportunityTable rows={opportunities.keywordOpportunities || []} type="opportunity" />
+      </DashboardPanel>
+      <DashboardPanel title="Low CTR opportunities" action="Potential lost clicks">
+        <GeoMiniOpportunityTable rows={opportunities.lowCtr || []} type="ctr" />
+      </DashboardPanel>
+      <DashboardPanel title="Winners" action="Traffic growth">
+        <GeoMiniOpportunityTable rows={opportunities.winners || []} type="winner" />
+      </DashboardPanel>
+      <DashboardPanel title="Losers" action="Needs attention">
+        <GeoMiniOpportunityTable rows={opportunities.losers || []} type="loser" />
+      </DashboardPanel>
+    </div>
+  );
+}
+
+function GeoMiniOpportunityTable({ rows, type }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No rows yet" text="Sync Search Console and compare periods to fill this section." />;
+  return (
+    <table className="dashboard-data-table compact-table">
+      <thead><tr><th>Query</th><th>Position</th><th>{type === 'ctr' ? 'Lost Clicks' : type === 'opportunity' ? 'Score' : 'Clicks Δ'}</th><th>Action</th></tr></thead>
+      <tbody>
+        {rows.slice(0, 8).map((row) => (
+          <tr key={`${type}-${row.id || row.query}`}>
+            <td>{row.query || row.dimension_key}</td>
+            <td>{positionFmt(row.position)}</td>
+            <td>{type === 'ctr' ? numberFmt(row.potential_lost_clicks) : type === 'opportunity' ? row.opportunity_score : numberFmt(row.click_change)}</td>
+            <td>{type === 'ctr' ? 'Rewrite title/meta' : type === 'loser' ? 'Investigate drop' : 'Improve content'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -2139,24 +2340,121 @@ function GeoCountryTable({ rows }) {
   );
 }
 
-function GeoQueryTable({ rows }) {
+function GeoQueryTable({ rows, detailed = false }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No query data yet" text="Sync Google Search Console to populate query and page rows." />;
 
   return (
     <table className="dashboard-data-table">
-      <thead><tr><th>Query</th><th>Country</th><th>Page</th><th>Clicks</th><th>Impressions</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Query</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Position</th>
+          {detailed ? <><th>Position Δ</th><th>Clicks Δ</th><th>Intent</th><th>Brand</th><th>Trend</th></> : <><th>Country</th><th>Page</th></>}
+        </tr>
+      </thead>
       <tbody>
-        {rows.slice(0, 12).map((row) => (
+        {rows.slice(0, detailed ? 18 : 12).map((row) => (
           <tr key={`${row.id}-${row.query}`}>
             <td>{row.query || 'Unknown query'}</td>
-            <td>{row.country || 'NA'}</td>
-            <td className="url-cell">{row.page || 'NA'}</td>
             <td>{row.clicks}</td>
             <td>{row.impressions}</td>
+            <td>{percentFmt(row.ctr)}</td>
+            <td>{positionFmt(row.position)}</td>
+            {detailed ? (
+              <>
+                <td>{row.position_change === null || row.position_change === undefined ? 'New' : Number(row.position_change).toFixed(1)}</td>
+                <td>{numberFmt(row.click_change)}</td>
+                <td>{row.search_intent || 'Mixed'}</td>
+                <td>{row.brand_type || 'Non-brand'}</td>
+                <td><StatusBadge active={row.status === 'Growing' || row.status === 'New'}>{row.status || 'Stable'}</StatusBadge></td>
+              </>
+            ) : (
+              <>
+                <td>{row.country || 'NA'}</td>
+                <td className="url-cell">{row.page || 'NA'}</td>
+              </>
+            )}
           </tr>
         ))}
       </tbody>
     </table>
+  );
+}
+
+function GeoPageTable({ rows }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No page data yet" text="Sync Search Console to populate page performance rows." />;
+
+  return (
+    <table className="dashboard-data-table">
+      <thead><tr><th>URL</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Position</th><th>Status</th><th>Page Type</th><th>Tags</th></tr></thead>
+      <tbody>
+        {rows.slice(0, 18).map((row) => (
+          <tr key={row.url}>
+            <td className="url-cell">{row.url}</td>
+            <td>{row.clicks}</td>
+            <td>{row.impressions}</td>
+            <td>{percentFmt(row.ctr)}</td>
+            <td>{positionFmt(row.position)}</td>
+            <td>{row.indexed_status}</td>
+            <td>{row.page_type}</td>
+            <td>{(row.tags || []).join(', ')}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function GeoDeviceTable({ rows }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No device data yet" text="Sync Search Console to populate desktop, mobile, and tablet rows." />;
+  return (
+    <table className="dashboard-data-table">
+      <thead><tr><th>Device</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Avg Position</th></tr></thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.dimension_key}>
+            <td>{row.dimension_key || 'Unknown'}</td>
+            <td>{row.clicks}</td>
+            <td>{row.impressions}</td>
+            <td>{percentFmt(row.ctr)}</td>
+            <td>{positionFmt(row.position)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function GeoSearchAppearanceTable({ rows }) {
+  if (!rows?.length) return <DashboardEmptyBlock title="No search appearance data yet" text="Google only returns this when rich result/search appearance rows exist." />;
+  return (
+    <table className="dashboard-data-table">
+      <thead><tr><th>Appearance</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Avg Position</th></tr></thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.dimension_key}>
+            <td>{row.dimension_key || 'Unknown'}</td>
+            <td>{row.clicks}</td>
+            <td>{row.impressions}</td>
+            <td>{percentFmt(row.ctr)}</td>
+            <td>{positionFmt(row.position)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function GeoUnsupportedMetrics({ items }) {
+  return (
+    <div className="geo-source-list">
+      {(items || []).map((item) => (
+        <div key={item}>
+          <SettingsIcon name="clipboard" />
+          <span>{item}</span>
+          <strong>Requires additional Google API/source</strong>
+        </div>
+      ))}
+    </div>
   );
 }
 

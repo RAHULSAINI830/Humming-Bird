@@ -49,6 +49,7 @@ const {
   replaceGeoSnapshots,
   listGeoCountrySnapshots,
   listGeoQuerySnapshots,
+  listGeoDimensionSnapshots,
   completeCompanyOnboarding,
   createUserCompanyWorkspace,
   listAllCompaniesForDeveloper,
@@ -1056,6 +1057,25 @@ function dateDaysAgo(days) {
   return date.toISOString().slice(0, 10);
 }
 
+function dateRangeDays(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  return Math.max(1, Math.round((end - start) / 86400000) + 1);
+}
+
+function previousDateRange(startDate, endDate) {
+  const days = dateRangeDays(startDate, endDate);
+  const previousEnd = new Date(`${startDate}T00:00:00Z`);
+  previousEnd.setUTCDate(previousEnd.getUTCDate() - 1);
+  const previousStart = new Date(previousEnd);
+  previousStart.setUTCDate(previousStart.getUTCDate() - days + 1);
+
+  return {
+    startDate: previousStart.toISOString().slice(0, 10),
+    endDate: previousEnd.toISOString().slice(0, 10)
+  };
+}
+
 function countryLabel(countryCode) {
   const code = String(countryCode || '').toUpperCase();
 
@@ -1084,21 +1104,195 @@ async function searchConsoleQuery(accessToken, propertyUrl, body) {
   return Array.isArray(data.rows) ? data.rows : [];
 }
 
+function dimensionRow(type, row) {
+  const keys = row.keys || [];
+  return {
+    dimension_type: type,
+    dimension_key: keys[0] || '',
+    dimension_key_2: keys[1] || '',
+    dimension_key_3: keys[2] || '',
+    clicks: row.clicks,
+    impressions: row.impressions,
+    ctr: row.ctr,
+    position: row.position
+  };
+}
+
+function aggregateRows(rows) {
+  const clicks = rows.reduce((sum, row) => sum + Number(row.clicks || 0), 0);
+  const impressions = rows.reduce((sum, row) => sum + Number(row.impressions || 0), 0);
+  const weightedPosition = rows.reduce((sum, row) => sum + Number(row.position || 0) * Number(row.impressions || 0), 0);
+
+  return {
+    clicks,
+    impressions,
+    ctr: impressions ? clicks / impressions : 0,
+    position: impressions ? weightedPosition / impressions : 0
+  };
+}
+
+function latestCreatedRows(rows) {
+  const firstCreated = rows[0]?.created_at;
+  return rows.filter((row) => !firstCreated || row.created_at === firstCreated);
+}
+
+function changeValue(current, previous) {
+  if (previous === null || previous === undefined || Number(previous) === 0) {
+    return current ? null : 0;
+  }
+
+  return ((Number(current || 0) - Number(previous || 0)) / Number(previous)) * 100;
+}
+
+function byKey(rows, keyName = 'dimension_key') {
+  return new Map(rows.map((row) => [String(row[keyName] || '').toLowerCase(), row]));
+}
+
+function searchIntentForQuery(query) {
+  const value = String(query || '').toLowerCase();
+  if (/\b(price|cost|buy|near me|service|company|best|top|software|tool)\b/.test(value)) return 'Commercial';
+  if (/\b(how|what|why|guide|ideas|examples|template)\b/.test(value)) return 'Informational';
+  if (/\b(login|contact|website|brand|support)\b/.test(value)) return 'Navigational';
+  return 'Mixed';
+}
+
+function brandTypeForQuery(query, companyName = '') {
+  const queryValue = String(query || '').toLowerCase();
+  const brand = String(companyName || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  const brandTokens = brand.split(/\s+/).filter((token) => token.length > 2);
+  return brandTokens.some((token) => queryValue.includes(token)) ? 'Brand' : 'Non-brand';
+}
+
+function pageTypeForUrl(url) {
+  const value = String(url || '').toLowerCase();
+  if (value.includes('/blog') || value.includes('/articles')) return 'Blog';
+  if (value.includes('/product')) return 'Product';
+  if (value.includes('/docs') || value.includes('/help')) return 'Docs';
+  if (value.includes('/category')) return 'Category';
+  if (value === '/' || value.split('/').filter(Boolean).length <= 2) return 'Landing Page';
+  return 'Page';
+}
+
+function queryStatus(row, previous) {
+  if (!previous) return 'New';
+  const currentClicks = Number(row.clicks || 0);
+  const previousClicks = Number(previous.clicks || 0);
+  if (currentClicks > previousClicks) return 'Growing';
+  if (currentClicks < previousClicks) return 'Declining';
+  return 'Stable';
+}
+
+function opportunityScore(row) {
+  const position = Number(row.position || 0);
+  const impressions = Number(row.impressions || 0);
+  if (position < 8 || position > 20 || !impressions) return 0;
+  return Math.min(100, Math.round((impressions / 100) + (21 - position) * 4));
+}
+
+function expectedCtrForPosition(position) {
+  const pos = Number(position || 0);
+  if (pos <= 1) return 0.28;
+  if (pos <= 2) return 0.15;
+  if (pos <= 3) return 0.11;
+  if (pos <= 5) return 0.07;
+  if (pos <= 10) return 0.035;
+  return 0.012;
+}
+
 function geoDashboardPayload(companyId) {
   const connection = getGoogleConnection(companyId);
   const properties = listSearchConsoleProperties(companyId);
   const selected = getSelectedSearchConsoleProperty(companyId) || properties[0] || null;
-  const countryRows = listGeoCountrySnapshots(companyId, selected?.site_url || '').filter((row, index, all) => {
-    const firstCreated = all[0]?.created_at;
-    return !firstCreated || row.created_at === firstCreated;
+  const propertyUrl = selected?.site_url || '';
+  const countryRows = latestCreatedRows(listGeoCountrySnapshots(companyId, propertyUrl));
+  const queryRows = latestCreatedRows(listGeoQuerySnapshots(companyId, propertyUrl));
+  const dateRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date'));
+  const pageRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page'));
+  const deviceRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'device'));
+  const searchAppearanceRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'searchAppearance'));
+  const previousQueryRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'query', 'previous'));
+  const previousPageRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page', 'previous'));
+  const previousDateRows = latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date', 'previous'));
+  const totals = aggregateRows(dateRows.length ? dateRows : countryRows);
+  const previousTotals = aggregateRows(previousDateRows);
+  const previousQueryMap = byKey(previousQueryRows);
+  const previousPageMap = byKey(previousPageRows);
+  const enrichedQueries = queryRows.map((row) => {
+    const previous = previousQueryMap.get(String(row.query || '').toLowerCase());
+    const clickChange = previous ? Number(row.clicks || 0) - Number(previous.clicks || 0) : Number(row.clicks || 0);
+    const impressionChange = previous ? Number(row.impressions || 0) - Number(previous.impressions || 0) : Number(row.impressions || 0);
+    const positionChange = previous ? Number(previous.position || 0) - Number(row.position || 0) : null;
+
+    return {
+      ...row,
+      search_intent: searchIntentForQuery(row.query),
+      brand_type: brandTypeForQuery(row.query, getDeveloperCompanyAccess(companyId)?.company_name || ''),
+      status: queryStatus(row, previous),
+      click_change: clickChange,
+      impression_change: impressionChange,
+      position_change: positionChange,
+      opportunity_score: opportunityScore(row),
+      expected_ctr: expectedCtrForPosition(row.position),
+      potential_lost_clicks: Math.max(0, Math.round((expectedCtrForPosition(row.position) - Number(row.ctr || 0)) * Number(row.impressions || 0)))
+    };
   });
-  const queryRows = listGeoQuerySnapshots(companyId, selected?.site_url || '').filter((row, index, all) => {
-    const firstCreated = all[0]?.created_at;
-    return !firstCreated || row.created_at === firstCreated;
+  const enrichedPages = pageRows.map((row) => {
+    const previous = previousPageMap.get(String(row.dimension_key || '').toLowerCase());
+    const positionChange = previous ? Number(previous.position || 0) - Number(row.position || 0) : null;
+    const clickChange = previous ? Number(row.clicks || 0) - Number(previous.clicks || 0) : Number(row.clicks || 0);
+    const tags = [];
+    if (Number(row.clicks || 0) >= 10) tags.push('Top Performer');
+    if (Number(row.ctr || 0) < 0.02 && Number(row.impressions || 0) >= 100) tags.push('Low CTR');
+    if (positionChange !== null && positionChange < -2) tags.push('Ranking Drop');
+    if (!previous) tags.push('New Page');
+    if (!tags.length) tags.push('Needs Optimization');
+
+    return {
+      url: row.dimension_key,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+      indexed_status: 'Requires URL Inspection',
+      last_crawled: 'Requires URL Inspection',
+      page_type: pageTypeForUrl(row.dimension_key),
+      primary_keyword: enrichedQueries.find((query) => query.page === row.dimension_key)?.query || '',
+      click_change: clickChange,
+      position_change: positionChange,
+      tags
+    };
   });
-  const totalClicks = countryRows.reduce((sum, row) => sum + Number(row.clicks || 0), 0);
-  const totalImpressions = countryRows.reduce((sum, row) => sum + Number(row.impressions || 0), 0);
-  const weightedPosition = countryRows.reduce((sum, row) => sum + Number(row.position || 0) * Number(row.impressions || 0), 0);
+  const lowCtr = enrichedQueries
+    .filter((row) => Number(row.impressions || 0) >= 50 && Number(row.ctr || 0) < expectedCtrForPosition(row.position))
+    .sort((a, b) => b.potential_lost_clicks - a.potential_lost_clicks)
+    .slice(0, 12);
+  const keywordOpportunities = enrichedQueries
+    .filter((row) => Number(row.position || 0) >= 8 && Number(row.position || 0) <= 20)
+    .sort((a, b) => b.opportunity_score - a.opportunity_score)
+    .slice(0, 12);
+  const winners = enrichedQueries
+    .filter((row) => Number(row.click_change || 0) > 0 || Number(row.position_change || 0) > 0)
+    .sort((a, b) => Number(b.click_change || 0) - Number(a.click_change || 0))
+    .slice(0, 10);
+  const losers = enrichedQueries
+    .filter((row) => Number(row.click_change || 0) < 0 || Number(row.position_change || 0) < 0)
+    .sort((a, b) => Number(a.click_change || 0) - Number(b.click_change || 0))
+    .slice(0, 10);
+  const rankingDistribution = {
+    top3: enrichedQueries.filter((row) => Number(row.position || 0) <= 3).length,
+    top10: enrichedQueries.filter((row) => Number(row.position || 0) <= 10).length,
+    top20: enrichedQueries.filter((row) => Number(row.position || 0) <= 20).length,
+    top50: enrichedQueries.filter((row) => Number(row.position || 0) <= 50).length,
+    top100: enrichedQueries.filter((row) => Number(row.position || 0) <= 100).length
+  };
+  const seoScore = Math.max(0, Math.min(100, Math.round(
+    45 +
+    (totals.ctr > 0.03 ? 15 : totals.ctr > 0.01 ? 7 : 0) +
+    (totals.position && totals.position <= 20 ? 15 : totals.position <= 50 ? 8 : 0) +
+    (enrichedQueries.length ? 10 : 0) +
+    (countryRows.length ? 10 : 0) +
+    (Number(changeValue(totals.clicks, previousTotals.clicks) || 0) > 0 ? 5 : 0)
+  )));
 
   return {
     companyId,
@@ -1112,18 +1306,68 @@ function geoDashboardPayload(companyId) {
     selectedProperty: selected,
     summary: {
       countries: countryRows.length,
-      clicks: totalClicks,
-      impressions: totalImpressions,
-      ctr: totalImpressions ? totalClicks / totalImpressions : 0,
-      position: totalImpressions ? weightedPosition / totalImpressions : 0,
+      clicks: totals.clicks,
+      impressions: totals.impressions,
+      ctr: totals.ctr,
+      position: totals.position,
       lastSyncedAt: countryRows[0]?.created_at || queryRows[0]?.created_at || null,
       dateRange: countryRows[0] ? { startDate: countryRows[0].start_date, endDate: countryRows[0].end_date } : null
+    },
+    kpis: {
+      totalClicks: totals.clicks,
+      totalImpressions: totals.impressions,
+      averageCtr: totals.ctr,
+      averagePosition: totals.position,
+      searchQueries: enrichedQueries.length,
+      rankingKeywords: enrichedQueries.filter((row) => Number(row.impressions || 0) > 0).length,
+      indexedPages: null,
+      validPages: null,
+      crawledPages: null,
+      notIndexedPages: null,
+      searchTrafficValue: null,
+      newPagesIndexed: null,
+      lostIndexedPages: null,
+      mobileUsabilityIssues: null,
+      coreWebVitalsStatus: 'Requires PageSpeed/CrUX API',
+      seoScore
+    },
+    comparison: {
+      clicks: changeValue(totals.clicks, previousTotals.clicks),
+      impressions: changeValue(totals.impressions, previousTotals.impressions),
+      ctr: changeValue(totals.ctr, previousTotals.ctr),
+      position: previousTotals.position ? Number(previousTotals.position) - Number(totals.position || 0) : null
     },
     countries: countryRows.map((row) => ({
       ...row,
       country_label: countryLabel(row.country)
     })),
-    queries: queryRows
+    queries: enrichedQueries,
+    pages: enrichedPages,
+    devices: deviceRows,
+    searchAppearance: searchAppearanceRows,
+    performanceSeries: dateRows.sort((a, b) => String(a.dimension_key).localeCompare(String(b.dimension_key))).map((row) => ({
+      date: row.dimension_key,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position
+    })),
+    opportunities: {
+      keywordOpportunities,
+      lowCtr,
+      winners,
+      losers,
+      rankingDistribution
+    },
+    unsupportedMetrics: [
+      'Index Coverage',
+      'URL Inspection bulk data',
+      'Core Web Vitals',
+      'Mobile Usability',
+      'Crawl Statistics',
+      'Manual Actions',
+      'Security Issues'
+    ]
   };
 }
 
@@ -1281,15 +1525,65 @@ async function handleSyncGeo(req, res) {
     const accessToken = await googleAccessTokenForCompany(context.access.company_id);
     const startDate = dateDaysAgo(30);
     const endDate = dateDaysAgo(2);
+    const previousRange = previousDateRange(startDate, endDate);
     const commonBody = { startDate, endDate, rowLimit: 25000 };
-    const countryRows = await searchConsoleQuery(accessToken, selected.site_url, {
-      ...commonBody,
-      dimensions: ['country']
-    });
-    const queryRows = await searchConsoleQuery(accessToken, selected.site_url, {
-      ...commonBody,
-      dimensions: ['query', 'country', 'page']
-    });
+    const [
+      countryRows,
+      queryRows,
+      dateRows,
+      pageRows,
+      deviceRows,
+      searchAppearanceRows,
+      previousQueryRows,
+      previousPageRows,
+      previousDateRows
+    ] = await Promise.all([
+      searchConsoleQuery(accessToken, selected.site_url, {
+        ...commonBody,
+        dimensions: ['country']
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        ...commonBody,
+        dimensions: ['query', 'country', 'page']
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        ...commonBody,
+        dimensions: ['date'],
+        rowLimit: 5000
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        ...commonBody,
+        dimensions: ['page']
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        ...commonBody,
+        dimensions: ['device'],
+        rowLimit: 5000
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        ...commonBody,
+        dimensions: ['searchAppearance'],
+        rowLimit: 5000
+      }).catch(() => []),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        startDate: previousRange.startDate,
+        endDate: previousRange.endDate,
+        rowLimit: 25000,
+        dimensions: ['query']
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        startDate: previousRange.startDate,
+        endDate: previousRange.endDate,
+        rowLimit: 25000,
+        dimensions: ['page']
+      }),
+      searchConsoleQuery(accessToken, selected.site_url, {
+        startDate: previousRange.startDate,
+        endDate: previousRange.endDate,
+        rowLimit: 5000,
+        dimensions: ['date']
+      })
+    ]);
 
     replaceGeoSnapshots({
       companyId: context.access.company_id,
@@ -1311,7 +1605,29 @@ async function handleSyncGeo(req, res) {
         impressions: row.impressions,
         ctr: row.ctr,
         position: row.position
-      }))
+      })),
+      dimensionRows: [
+        ...dateRows.map((row) => dimensionRow('date', row)),
+        ...pageRows.map((row) => dimensionRow('page', row)),
+        ...deviceRows.map((row) => dimensionRow('device', row)),
+        ...searchAppearanceRows.map((row) => dimensionRow('searchAppearance', row)),
+        ...queryRows.map((row) => dimensionRow('queryDetail', row))
+      ]
+    });
+
+    replaceGeoSnapshots({
+      companyId: context.access.company_id,
+      propertyUrl: selected.site_url,
+      startDate: previousRange.startDate,
+      endDate: previousRange.endDate,
+      countryRows: [],
+      queryRows: [],
+      dimensionRows: [
+        ...previousDateRows.map((row) => dimensionRow('date', row)),
+        ...previousQueryRows.map((row) => dimensionRow('query', row)),
+        ...previousPageRows.map((row) => dimensionRow('page', row))
+      ],
+      periodLabel: 'previous'
     });
 
     return sendJson(res, geoDashboardPayload(context.access.company_id));
