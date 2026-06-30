@@ -12,6 +12,7 @@ const {
   getUserCompanyAccess,
   userHasRole,
   getAllCompaniesForWorkspace,
+  listActiveCompanies,
   getDeveloperCompanyAccess,
   listCompanyUsers,
   countCompanyBusinessOwners,
@@ -1515,6 +1516,132 @@ async function handleSelectGeoProperty(req, res) {
   return sendJson(res, geoDashboardPayload(context.access.company_id));
 }
 
+async function syncGeoForCompany(companyId) {
+  const selected = getSelectedSearchConsoleProperty(companyId);
+
+  if (!selected) {
+    return { skipped: true, reason: 'no-selected-property' };
+  }
+
+  const accessToken = await googleAccessTokenForCompany(companyId);
+  const startDate = dateDaysAgo(30);
+  const endDate = dateDaysAgo(2);
+  const previousRange = previousDateRange(startDate, endDate);
+  const commonBody = { startDate, endDate, rowLimit: 25000 };
+  const [
+    countryRows,
+    queryRows,
+    dateRows,
+    pageRows,
+    deviceRows,
+    searchAppearanceRows,
+    previousQueryRows,
+    previousPageRows,
+    previousDateRows
+  ] = await Promise.all([
+    searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['country']
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['query', 'country', 'page']
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['date'],
+      rowLimit: 5000
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['page']
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['device'],
+      rowLimit: 5000
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
+      dimensions: ['searchAppearance'],
+      rowLimit: 5000
+    }).catch(() => []),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      startDate: previousRange.startDate,
+      endDate: previousRange.endDate,
+      rowLimit: 25000,
+      dimensions: ['query']
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      startDate: previousRange.startDate,
+      endDate: previousRange.endDate,
+      rowLimit: 25000,
+      dimensions: ['page']
+    }),
+    searchConsoleQuery(accessToken, selected.site_url, {
+      startDate: previousRange.startDate,
+      endDate: previousRange.endDate,
+      rowLimit: 5000,
+      dimensions: ['date']
+    })
+  ]);
+
+  clearGeoSnapshots(companyId, selected.site_url);
+
+  replaceGeoSnapshots({
+    companyId,
+    propertyUrl: selected.site_url,
+    startDate,
+    endDate,
+    countryRows: countryRows.map((row) => ({
+      country: row.keys?.[0] || 'Unknown',
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position
+    })),
+    queryRows: queryRows.map((row) => ({
+      query: row.keys?.[0] || '',
+      country: row.keys?.[1] || '',
+      page: row.keys?.[2] || '',
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position
+    })),
+    dimensionRows: [
+      ...dateRows.map((row) => dimensionRow('date', row)),
+      ...pageRows.map((row) => dimensionRow('page', row)),
+      ...deviceRows.map((row) => dimensionRow('device', row)),
+      ...searchAppearanceRows.map((row) => dimensionRow('searchAppearance', row)),
+      ...queryRows.map((row) => dimensionRow('queryDetail', row))
+    ]
+  });
+
+  replaceGeoSnapshots({
+    companyId,
+    propertyUrl: selected.site_url,
+    startDate: previousRange.startDate,
+    endDate: previousRange.endDate,
+    countryRows: [],
+    queryRows: [],
+    dimensionRows: [
+      ...previousDateRows.map((row) => dimensionRow('date', row)),
+      ...previousQueryRows.map((row) => dimensionRow('query', row)),
+      ...previousPageRows.map((row) => dimensionRow('page', row))
+    ],
+    periodLabel: 'previous'
+  });
+
+  return {
+    skipped: false,
+    propertyUrl: selected.site_url,
+    countryRows: countryRows.length,
+    queryRows: queryRows.length,
+    dateRows: dateRows.length
+  };
+}
+
 async function handleSyncGeo(req, res) {
   const context = requireSelectedCompany(req, res);
 
@@ -1531,115 +1658,7 @@ async function handleSyncGeo(req, res) {
   }
 
   try {
-    const accessToken = await googleAccessTokenForCompany(context.access.company_id);
-    const startDate = dateDaysAgo(30);
-    const endDate = dateDaysAgo(2);
-    const previousRange = previousDateRange(startDate, endDate);
-    const commonBody = { startDate, endDate, rowLimit: 25000 };
-    const [
-      countryRows,
-      queryRows,
-      dateRows,
-      pageRows,
-      deviceRows,
-      searchAppearanceRows,
-      previousQueryRows,
-      previousPageRows,
-      previousDateRows
-    ] = await Promise.all([
-      searchConsoleQuery(accessToken, selected.site_url, {
-        ...commonBody,
-        dimensions: ['country']
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        ...commonBody,
-        dimensions: ['query', 'country', 'page']
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        ...commonBody,
-        dimensions: ['date'],
-        rowLimit: 5000
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        ...commonBody,
-        dimensions: ['page']
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        ...commonBody,
-        dimensions: ['device'],
-        rowLimit: 5000
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        ...commonBody,
-        dimensions: ['searchAppearance'],
-        rowLimit: 5000
-      }).catch(() => []),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        startDate: previousRange.startDate,
-        endDate: previousRange.endDate,
-        rowLimit: 25000,
-        dimensions: ['query']
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        startDate: previousRange.startDate,
-        endDate: previousRange.endDate,
-        rowLimit: 25000,
-        dimensions: ['page']
-      }),
-      searchConsoleQuery(accessToken, selected.site_url, {
-        startDate: previousRange.startDate,
-        endDate: previousRange.endDate,
-        rowLimit: 5000,
-        dimensions: ['date']
-      })
-    ]);
-
-    clearGeoSnapshots(context.access.company_id, selected.site_url);
-
-    replaceGeoSnapshots({
-      companyId: context.access.company_id,
-      propertyUrl: selected.site_url,
-      startDate,
-      endDate,
-      countryRows: countryRows.map((row) => ({
-        country: row.keys?.[0] || 'Unknown',
-        clicks: row.clicks,
-        impressions: row.impressions,
-        ctr: row.ctr,
-        position: row.position
-      })),
-      queryRows: queryRows.map((row) => ({
-        query: row.keys?.[0] || '',
-        country: row.keys?.[1] || '',
-        page: row.keys?.[2] || '',
-        clicks: row.clicks,
-        impressions: row.impressions,
-        ctr: row.ctr,
-        position: row.position
-      })),
-      dimensionRows: [
-        ...dateRows.map((row) => dimensionRow('date', row)),
-        ...pageRows.map((row) => dimensionRow('page', row)),
-        ...deviceRows.map((row) => dimensionRow('device', row)),
-        ...searchAppearanceRows.map((row) => dimensionRow('searchAppearance', row)),
-        ...queryRows.map((row) => dimensionRow('queryDetail', row))
-      ]
-    });
-
-    replaceGeoSnapshots({
-      companyId: context.access.company_id,
-      propertyUrl: selected.site_url,
-      startDate: previousRange.startDate,
-      endDate: previousRange.endDate,
-      countryRows: [],
-      queryRows: [],
-      dimensionRows: [
-        ...previousDateRows.map((row) => dimensionRow('date', row)),
-        ...previousQueryRows.map((row) => dimensionRow('query', row)),
-        ...previousPageRows.map((row) => dimensionRow('page', row))
-      ],
-      periodLabel: 'previous'
-    });
+    await syncGeoForCompany(context.access.company_id);
 
     return sendJson(res, geoDashboardPayload(context.access.company_id));
   } catch (error) {
@@ -1924,6 +1943,88 @@ async function handleSetupRunChecks(req, res) {
     console.error(error);
     return sendJson(res, { error: 'AI visibility checks failed. Please retry.' }, 500);
   }
+}
+
+async function refreshPromptChecksForCompany(companyId) {
+  const access = getDeveloperCompanyAccess(companyId);
+  const analysis = getLatestCompletedBusinessAnalysis(companyId);
+  const competitors = listCompanyCompetitors(companyId);
+  const prompts = listCompanyPrompts(companyId).filter((prompt) => prompt.status === 'active');
+
+  if (!access || !analysis || !competitors.length || !prompts.length) {
+    return { skipped: true, reason: 'missing-analysis-competitors-or-prompts' };
+  }
+
+  const visibilityResults = await AIService.analyzePromptVisibility(access, prompts, competitors, analysis);
+  updatePromptVisibility(companyId, visibilityResults);
+
+  return {
+    skipped: false,
+    checkedPrompts: visibilityResults.length,
+    provider: 'gemini'
+  };
+}
+
+function isAuthorizedCronRequest(req) {
+  const cronSecret = process.env.CRON_SECRET || process.env.HUMMINGBIRD_CRON_SECRET;
+
+  if (!cronSecret) {
+    return false;
+  }
+
+  const authorization = String(req.headers.authorization || '');
+  const headerSecret = String(req.headers['x-cron-secret'] || '');
+
+  return authorization === `Bearer ${cronSecret}` || headerSecret === cronSecret;
+}
+
+async function handleDailyRefresh(req, res) {
+  if (!isAuthorizedCronRequest(req)) {
+    return sendJson(res, { error: 'Unauthorized cron request' }, 401);
+  }
+
+  const startedAt = new Date().toISOString();
+  const companies = listActiveCompanies();
+  const results = [];
+
+  for (const company of companies) {
+    const item = {
+      company_id: company.company_id,
+      company_name: company.company_name,
+      geo: null,
+      prompts: null
+    };
+
+    try {
+      const connection = getGoogleConnection(company.company_id);
+      const selectedProperty = getSelectedSearchConsoleProperty(company.company_id);
+
+      if (connection?.status === 'connected' && selectedProperty) {
+        item.geo = await syncGeoForCompany(company.company_id);
+      } else {
+        item.geo = { skipped: true, reason: 'search-console-not-connected' };
+      }
+    } catch (error) {
+      item.geo = { skipped: true, error: error.safeMessage || error.message || 'GEO refresh failed' };
+    }
+
+    try {
+      item.prompts = await refreshPromptChecksForCompany(company.company_id);
+    } catch (error) {
+      item.prompts = { skipped: true, error: error.safeMessage || error.message || 'Prompt refresh failed' };
+    }
+
+    results.push(item);
+  }
+
+  return sendJson(res, {
+    ok: true,
+    refresh_type: 'daily',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    companies: results.length,
+    results
+  });
 }
 
 async function handleSetupRemovePrompt(req, res) {
@@ -2502,6 +2603,10 @@ async function router(req, res) {
   try {
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return sendJson(res, { ok: true, app: 'hummingbird', layer: 'backend-api', database: dbPath });
+    }
+
+    if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/cron/daily-refresh') {
+      return handleDailyRefresh(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/session') {

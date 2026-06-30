@@ -31,12 +31,12 @@ export default function Dashboard({ data, session, workspace, goTo }) {
 
       <article className="dashboard-hero-card">
         <div>
-          <p className="eyebrow">Unified Visibility</p>
+          <p className="eyebrow">Hummingbird AI overview</p>
           <h2>{hasRealData ? percentOrEmpty(visibility.visibilityScore) : 'Awaiting first AI scan'}</h2>
           <p>
             {hasRealData
-              ? `Combined score from real available provider data only: ${activeProviders.join(', ')}.`
-              : 'No provider response data has been saved yet. Hummingbird will combine only real provider results when scans are available.'}
+              ? `Hummingbird AI analyzed saved responses from available sources: ${activeProviders.join(', ')}. Other providers remain excluded until their API data exists.`
+              : 'No provider response data has been saved yet. Hummingbird AI will analyze only real saved provider results when scans are available.'}
           </p>
         </div>
         <div className="dashboard-provider-stack">
@@ -62,7 +62,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
           <div>
             <p className="eyebrow">How to generate dashboard data</p>
             <h2>Your analytics dashboard will fill after prompt checks run.</h2>
-            <p>Hummingbird does not use mock numbers. Complete the flow below and this page will populate from saved AI responses, mentions, competitors, and citations.</p>
+            <p>Hummingbird does not use mock numbers. Complete the flow below and this page will populate from saved provider responses, mentions, competitors, citations, and daily refreshes.</p>
           </div>
           <div className="dashboard-guide-steps">
             <button type="button" onClick={() => goTo('business-analysis')}>1. Generate business analysis</button>

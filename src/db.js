@@ -622,6 +622,29 @@ function getAllCompaniesForWorkspace() {
   `).all();
 }
 
+function listActiveCompanies() {
+  return db.prepare(`
+    SELECT
+      id AS company_id,
+      company_name,
+      website_url,
+      logo_url,
+      industry,
+      service_area,
+      target_country,
+      main_services,
+      known_competitors,
+      brand_description,
+      target_audience,
+      onboarding_completed,
+      onboarding_completed_at,
+      status
+    FROM companies
+    WHERE status = 'active'
+    ORDER BY id ASC
+  `).all();
+}
+
 function getDeveloperCompanyAccess(companyId) {
   return db.prepare(`
     SELECT
@@ -1928,6 +1951,7 @@ module.exports = {
   getUserCompanyAccess,
   userHasRole,
   getAllCompaniesForWorkspace,
+  listActiveCompanies,
   getDeveloperCompanyAccess,
   getRoleByName,
   listCompanyUsers,

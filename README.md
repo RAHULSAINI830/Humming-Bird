@@ -121,6 +121,24 @@ In Google Cloud Console:
 
 In Hummingbird, open GEO Visibility, connect Google Search Console, select the verified property, then sync. The app stores Search Console rows in the database and renders the GEO tab from saved data.
 
+## Daily refresh automation
+
+Hummingbird includes a Vercel Cron job that calls `/api/cron/daily-refresh` every day at `02:00 UTC`.
+
+Set this environment variable in Vercel:
+
+```bash
+CRON_SECRET=use-a-long-random-secret
+```
+
+The daily refresh:
+
+- refreshes Google Search Console rows for connected workspaces;
+- reruns saved prompt visibility checks for workspaces with analysis, competitors, and prompts;
+- saves the latest database data so dashboards show fresh comparisons without manual effort.
+
+Only real saved provider data is used. If ChatGPT, Claude, or Perplexity APIs are not connected yet, those providers stay excluded from combined Hummingbird AI scoring instead of being mocked.
+
 ## Vercel database seed
 
 For the current prototype, `data/rango.sqlite` is intentionally committed as a bundled seed database so Vercel can start with the same users, companies, prompts, analyses, and access records that exist locally.
