@@ -4,13 +4,12 @@ import 'leaflet/dist/leaflet.css';
 import { api } from '../lib/api';
 import { DashboardEmptyBlock, DashboardPanel, EmptyInline, PageHeader, SettingsIcon, StatusBadge } from '../components/common';
 
-export default function GeoVisibility({ data, onChange, workspace }) {
+export default function GeoVisibility({ data, onChange, workspace, geoTab = 'performance' }) {
   const [loading, setLoading] = useState('');
   const [message, setMessage] = useState('');
   const [mapMode, setMapMode] = useState('world');
   const [selectedCountry, setSelectedCountry] = useState('');
   const [queryFilter, setQueryFilter] = useState('all');
-  const [geoTab, setGeoTab] = useState('performance');
   const countries = data?.countries || [];
   const queries = data?.queries || [];
   const pages = data?.pages || [];
@@ -155,8 +154,6 @@ export default function GeoVisibility({ data, onChange, workspace }) {
 
           {message ? <div className={message.includes('refreshed') || message.includes('disconnected') || message.includes('cleared') ? 'success-notice' : 'notice'}>{message}</div> : null}
 
-          <GeoSubTabs active={geoTab} onChange={setGeoTab} />
-
           {geoTab === 'performance' ? (
             <>
               <GeoPerformanceOverview rows={performanceSeries} kpis={kpis} comparison={comparison} summary={summary} />
@@ -236,27 +233,6 @@ export default function GeoVisibility({ data, onChange, workspace }) {
         </>
       ) : null}
     </section>
-  );
-}
-
-function GeoSubTabs({ active, onChange }) {
-  const tabs = [
-    ['performance', 'Performance', 'Clicks, impressions, CTR'],
-    ['queries', 'Queries', 'Keywords and opportunities'],
-    ['pages', 'Pages', 'URLs and search appearance'],
-    ['countries', 'Countries', 'Map and markets'],
-    ['technical', 'Technical', 'Devices and extra sources']
-  ];
-
-  return (
-    <div className="geo-subtabs">
-      {tabs.map(([key, label, helper]) => (
-        <button type="button" key={key} className={active === key ? 'active' : ''} onClick={() => onChange(key)}>
-          <strong>{label}</strong>
-          <span>{helper}</span>
-        </button>
-      ))}
-    </div>
   );
 }
 

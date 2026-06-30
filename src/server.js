@@ -2284,6 +2284,8 @@ function handleSettings(req, res) {
     setupProgress: setupProgress(context.access),
     users: listCompanyUsers(context.access.company_id),
     canManage: USER_MANAGEMENT_ROLES.includes(context.access.role_name),
+    assignableRoles: getAssignableUserRoles(context.access.role_name),
+    statuses: COMPANY_ACCESS_STATUSES,
     analysis: getLatestBusinessAnalysis(context.access.company_id) || null,
     promptsSummary: promptSummary(listCompanyPrompts(context.access.company_id)),
     competitors: listCompanyCompetitors(context.access.company_id)

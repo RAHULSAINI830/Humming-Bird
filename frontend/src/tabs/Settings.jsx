@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { api } from '../lib/api';
-import { EmptyInline, LogoChip, PageHeader, SettingsIcon, StatusBadge } from '../components/common';
+import { EmptyInline, LogoChip, PageHeader, SettingsIcon } from '../components/common';
+import Users from './Users';
 
 export default function Settings({ data, onChange, workspace }) {
   const company = data?.company;
@@ -9,37 +8,10 @@ export default function Settings({ data, onChange, workspace }) {
   const promptsSummary = data?.promptsSummary || {};
   const competitors = data?.competitors || [];
   const analysisStatus = data?.analysis?.analysis_status || 'Not started';
-  const canManage = Boolean(data?.canManage);
   const healthProgress = company?.onboarding_completed ? 100 : progress.percentage || 0;
-  const [message, setMessage] = useState('');
-  const [removingUserId, setRemovingUserId] = useState(null);
 
   if (!data) {
     return <EmptyInline title="Loading settings" text="Fetching company, user, and workspace data." />;
-  }
-
-  async function removeUser(user) {
-    const confirmed = window.confirm(`Remove ${user.full_name} from ${company?.company_name || 'this company'}?`);
-
-    if (!confirmed) {
-      return;
-    }
-
-    setRemovingUserId(user.user_id);
-    setMessage('');
-
-    try {
-      const result = await api('/api/users/remove', {
-        method: 'POST',
-        body: JSON.stringify({ userId: user.user_id })
-      });
-      onChange({ ...data, users: result.users || [] });
-      setMessage('User removed from this company.');
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setRemovingUserId(null);
-    }
   }
 
   return (
@@ -113,42 +85,7 @@ export default function Settings({ data, onChange, workspace }) {
         </article>
       </div>
 
-      <div className="table-panel settings-table settings-access-card">
-        <div className="table-heading">
-          <div>
-            <p className="eyebrow">Access Overview</p>
-            <h2>Workspace users</h2>
-          </div>
-          <span className="soft-pill">{users.length} users</span>
-        </div>
-        {message ? <div className={message.includes('removed') ? 'success-notice' : 'notice'}>{message}</div> : null}
-        <table>
-          <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Access Status</th><th>Added Date</th>{canManage ? <th>Actions</th> : null}</tr></thead>
-          <tbody>
-            {users.map((user) => (
-              <tr key={user.access_id}>
-                <td>{user.full_name}</td>
-                <td>{user.email}</td>
-                <td>{user.role_name}</td>
-                <td><StatusBadge active={user.access_status === 'active'}>{user.access_status}</StatusBadge></td>
-                <td>{user.added_date}</td>
-                {canManage ? (
-                  <td>
-                    <button
-                      type="button"
-                      className="danger-action-button"
-                      onClick={() => removeUser(user)}
-                      disabled={removingUserId === user.user_id}
-                    >
-                      {removingUserId === user.user_id ? 'Removing…' : 'Remove'}
-                    </button>
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <Users data={data} onChange={onChange} embedded />
     </section>
   );
 }
@@ -187,4 +124,3 @@ function SettingsHealthRow({ icon, label, value, success = false, purple = false
     </div>
   );
 }
-

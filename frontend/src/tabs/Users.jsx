@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../lib/api';
 import { EmptyInline, Input, LogoChip, Metric, PageHeader, SideFormTray, StatusBadge } from '../components/common';
 
-export default function Users({ data, onChange, workspace }) {
+export default function Users({ data, onChange, workspace, embedded = false }) {
   const users = data?.users || [];
   const company = data?.company;
   const [form, setForm] = useState({ status: 'active', roleName: data?.assignableRoles?.[0] || 'Marketing Manager' });
@@ -66,18 +66,29 @@ export default function Users({ data, onChange, workspace }) {
   }
 
   return (
-    <section className="page-content">
-      <div className="page-title page-title-row">
-        <div className="title-with-logo">
-          <LogoChip name={company?.company_name || 'Company'} url={company?.logo_url} size="large" />
+    <section className={embedded ? 'settings-users-panel' : 'page-content'}>
+      {!embedded ? (
+        <div className="page-title page-title-row">
+          <div className="title-with-logo">
+            <LogoChip name={company?.company_name || 'Company'} url={company?.logo_url} size="large" />
+            <div>
+              <p className="eyebrow">User Management</p>
+              <h1>Company users</h1>
+              <p>Users with access to {company?.company_name || 'this workspace'}.</p>
+            </div>
+          </div>
+          <div className="page-title-actions">{workspace}</div>
+        </div>
+      ) : (
+        <div className="settings-section-heading">
           <div>
             <p className="eyebrow">User Management</p>
-            <h1>Company users</h1>
-            <p>Users with access to {company?.company_name || 'this workspace'}.</p>
+            <h2>Company users</h2>
+            <p>Invite and manage users inside this workspace.</p>
           </div>
+          <span className="soft-pill">{users.length} users</span>
         </div>
-        <div className="page-title-actions">{workspace}</div>
-      </div>
+      )}
 
       <div className="metric-grid">
         <Metric title="Total Users" value={users.length} helper="Users connected to this company" />

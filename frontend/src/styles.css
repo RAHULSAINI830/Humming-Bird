@@ -389,6 +389,11 @@ button {
   gap: 6px;
 }
 
+.sidebar-nav-group {
+  display: grid;
+  gap: 6px;
+}
+
 .sidebar-nav button {
   display: flex;
   gap: 10px;
@@ -412,6 +417,33 @@ button {
 .sidebar-nav button:hover {
   color: var(--primary);
   background: #fff3e4;
+}
+
+.sidebar-child-nav {
+  display: none;
+  gap: 5px;
+  margin: -2px 0 6px 36px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 157, 0, 0.28);
+}
+
+.sidebar-child-nav.open {
+  display: grid;
+}
+
+.sidebar-child-nav button {
+  min-height: 34px;
+  padding: 0 11px;
+  border-radius: 11px;
+  color: #67758c;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.sidebar-child-nav button.active,
+.sidebar-child-nav button:hover {
+  color: var(--primary);
+  background: #fff8ee;
 }
 
 .sidebar-panel {
@@ -1512,6 +1544,32 @@ button {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+.settings-users-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.settings-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.settings-section-heading h2 {
+  margin: 0 0 6px;
+  color: var(--primary);
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.settings-section-heading p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 750;
 }
 
 .settings-metric-card {

@@ -8,8 +8,15 @@ export const navItems = [
   ['Prompts', 'prompts', '✦'],
   ['Citations', 'citations', '◇'],
   ['GEO Visibility', 'geo', '⌖'],
-  ['Users', 'users', '◌'],
   ['Settings', 'settings', '⚙']
+];
+
+export const geoSubTabs = [
+  { key: 'performance', label: 'Performance', helper: 'Clicks, impressions, CTR' },
+  { key: 'queries', label: 'Queries', helper: 'Keywords and opportunities' },
+  { key: 'pages', label: 'Pages', helper: 'URLs and appearance' },
+  { key: 'countries', label: 'Countries', helper: 'Map and markets' },
+  { key: 'technical', label: 'Technical', helper: 'Devices and coverage gaps' }
 ];
 
 export const DEFAULT_ACTIVE_VIEW = 'dashboard';

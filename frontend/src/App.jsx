@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from './lib/api';
-import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, navItems, readInitialActiveView } from './lib/constants';
+import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, geoSubTabs, navItems, readInitialActiveView } from './lib/constants';
 import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, WorkspaceCard } from './components/common';
 import Dashboard from './tabs/Dashboard';
 import BusinessAnalysis from './tabs/BusinessAnalysis';
@@ -9,7 +9,6 @@ import Competitors from './tabs/Competitors';
 import Prompts from './tabs/Prompts';
 import Citations from './tabs/Citations';
 import GeoVisibility from './tabs/GeoVisibility';
-import Users from './tabs/Users';
 import Settings from './tabs/Settings';
 import DeveloperAdmin from './tabs/DeveloperAdmin';
 
@@ -25,8 +24,8 @@ function App() {
   const [competitorsData, setCompetitorsData] = useState({ competitors: [] });
   const [citationsData, setCitationsData] = useState({ citations: [], summary: null });
   const [geoData, setGeoData] = useState(null);
+  const [geoTab, setGeoTab] = useState('performance');
   const [settingsData, setSettingsData] = useState(null);
-  const [usersData, setUsersData] = useState({ users: [], company: null });
   const [developerData, setDeveloperData] = useState(null);
   const [setupStatus, setSetupStatus] = useState(null);
   const [setupLoading, setSetupLoading] = useState(false);
@@ -134,10 +133,6 @@ function App() {
       api('/api/settings').then(setSettingsData).catch((error) => setNotice(error.message));
     }
 
-    if (activeView === 'users') {
-      api('/api/users').then(setUsersData).catch((error) => setNotice(error.message));
-    }
-
     if (activeView === 'developer') {
       api('/api/developer').then(setDeveloperData).catch((error) => setNotice(error.message));
     }
@@ -178,7 +173,6 @@ function App() {
     setCitationsData({ citations: [], summary: null });
     setGeoData(null);
     setSettingsData(null);
-    setUsersData({ users: [], company: null });
     setActiveView('dashboard');
   }
 
@@ -247,14 +241,33 @@ function App() {
             </button>
           ) : null}
           {navItems.map(([label, view, icon]) => (
-            <button
-              type="button"
-              key={view}
-              onClick={() => setActiveView(view)}
-              className={activeView === view ? 'active' : ''}
-            >
-              <span>{icon}</span> {label}
-            </button>
+            <div className={view === 'geo' ? 'sidebar-nav-group' : ''} key={view}>
+              <button
+                type="button"
+                onClick={() => setActiveView(view)}
+                className={activeView === view ? 'active' : ''}
+              >
+                <span>{icon}</span> {label}
+              </button>
+              {view === 'geo' ? (
+                <div className={`sidebar-child-nav ${activeView === 'geo' ? 'open' : ''}`}>
+                  {geoSubTabs.map((tab) => (
+                    <button
+                      type="button"
+                      key={tab.key}
+                      onClick={() => {
+                        setActiveView('geo');
+                        setGeoTab(tab.key);
+                      }}
+                      className={activeView === 'geo' && geoTab === tab.key ? 'active' : ''}
+                      title={tab.helper}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ))}
         </nav>
 
@@ -286,8 +299,7 @@ function App() {
         {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'users' ? <Users data={usersData} onChange={setUsersData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+        {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
         {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
         {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
       </section>
