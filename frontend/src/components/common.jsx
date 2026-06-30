@@ -490,6 +490,18 @@ export function DashboardEmptyBlock({ title, text }) {
   );
 }
 
+export function DashboardPanel({ title, action, children }) {
+  return (
+    <article className="dashboard-panel">
+      <div className="dashboard-panel-head">
+        <h2>{title}</h2>
+        {action ? <span>{action}</span> : null}
+      </div>
+      {children}
+    </article>
+  );
+}
+
 export function Metric({ title, value, helper, icon, compact = false }) {
   return (
     <article className={`metric-card ${compact ? 'compact' : ''}`}>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { api } from '../lib/api';
-import { DashboardEmptyBlock, EmptyInline, PageHeader, StatusBadge } from '../components/common';
+import { DashboardEmptyBlock, DashboardPanel, EmptyInline, PageHeader, SettingsIcon, StatusBadge } from '../components/common';
 
 export default function GeoVisibility({ data, onChange, workspace }) {
   const [loading, setLoading] = useState('');
