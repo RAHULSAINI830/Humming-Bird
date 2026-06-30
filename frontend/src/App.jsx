@@ -158,7 +158,7 @@ function App() {
     if (activeView === 'developer') {
       api('/api/developer').then(setDeveloperData).catch((error) => setNotice(error.message));
     }
-  }, [activeView, status]);
+  }, [activeView, status, session?.selectedCompanyId]);
 
   useEffect(() => {
     if (status !== 'ready' || !session?.selectedCompanyId || session.isDeveloper) {
@@ -186,6 +186,14 @@ function App() {
     setSession(data);
     setSetupStatus(null);
     setDashboard(null);
+    setBusinessAnalysis(null);
+    setAeoRecommendations(null);
+    setPromptsData({ prompts: [], summary: null });
+    setCompetitorsData({ competitors: [] });
+    setCitationsData({ citations: [], summary: null });
+    setGeoData(null);
+    setSettingsData(null);
+    setUsersData({ users: [], company: null });
     setActiveView('dashboard');
   }
 
@@ -1803,12 +1811,16 @@ function Citations({ data, workspace }) {
 function GeoVisibility({ data, onChange, workspace }) {
   const [loading, setLoading] = useState('');
   const [message, setMessage] = useState('');
+  const [mapMode, setMapMode] = useState('world');
+  const [selectedCountry, setSelectedCountry] = useState('');
   const countries = data?.countries || [];
   const queries = data?.queries || [];
   const properties = data?.properties || [];
   const summary = data?.summary || {};
   const canManage = Boolean(data?.canManage);
-  const maxImpressions = Math.max(...countries.map((row) => Number(row.impressions || 0)), 0);
+  const sortedCountries = [...countries].sort((a, b) => Number(b.impressions || 0) - Number(a.impressions || 0));
+  const activeCountry = sortedCountries.find((country) => normalizedCountryCode(country.country) === selectedCountry) || sortedCountries[0] || null;
+  const focusedCountryCode = mapMode === 'country' ? normalizedCountryCode(activeCountry?.country) : '';
 
   async function syncGeo() {
     setLoading('sync');
@@ -1923,28 +1935,33 @@ function GeoVisibility({ data, onChange, workspace }) {
           <div className="geo-body-grid">
             <article className="geo-map-card">
               <div className="dashboard-panel-head">
-                <h2>GEO heat map</h2>
-                <span>{countries.length ? 'Real GSC data' : 'No synced data'}</span>
+                <div>
+                  <h2>Geographic heat map</h2>
+                  <p>{countries.length ? 'World view from saved Search Console country rows.' : 'Connect and sync Search Console to populate the map.'}</p>
+                </div>
+                <div className="geo-map-controls">
+                  <div className="geo-mode-toggle">
+                    <button type="button" className={mapMode === 'world' ? 'active' : ''} onClick={() => setMapMode('world')}>World</button>
+                    <button type="button" className={mapMode === 'country' ? 'active' : ''} onClick={() => setMapMode('country')}>Country</button>
+                  </div>
+                  <select
+                    value={normalizedCountryCode(activeCountry?.country)}
+                    onChange={(event) => {
+                      setSelectedCountry(event.target.value);
+                      setMapMode('country');
+                    }}
+                    disabled={!sortedCountries.length}
+                  >
+                    {sortedCountries.length ? sortedCountries.map((country) => (
+                      <option key={`${country.country}-${country.id}`} value={normalizedCountryCode(country.country)}>
+                        {displayCountryName(country)} · {country.impressions} impressions
+                      </option>
+                    )) : <option>No synced countries</option>}
+                  </select>
+                </div>
               </div>
-              <div className="geo-heat-grid">
-                {countries.length ? countries.slice(0, 40).map((country) => {
-                  const intensity = maxImpressions ? Math.max(0.08, Number(country.impressions || 0) / maxImpressions) : 0.08;
-                  return (
-                    <div
-                      key={`${country.country}-${country.id}`}
-                      className="geo-heat-cell"
-                      style={{ '--heat': intensity }}
-                      title={`${country.country_label}: ${country.impressions} impressions, ${country.clicks} clicks`}
-                    >
-                      <strong>{country.country}</strong>
-                      <span>{country.country_label}</span>
-                      <small>{country.impressions} impressions</small>
-                    </div>
-                  );
-                }) : (
-                  <DashboardEmptyBlock title="No GEO rows saved yet" text="Click Sync Search Console after connecting a verified property. Hummingbird will store country-level rows in SQLite." />
-                )}
-              </div>
+              <GeoWorldMap rows={sortedCountries} focusedCountryCode={focusedCountryCode} />
+              {mapMode === 'country' && activeCountry ? <GeoCountryFocus country={activeCountry} /> : null}
             </article>
 
             <article className="geo-side-card">
@@ -1970,6 +1987,127 @@ function GeoVisibility({ data, onChange, workspace }) {
         </>
       ) : null}
     </section>
+  );
+}
+
+const GEO_COUNTRY_META = {
+  ARG: { alpha2: 'AR', name: 'Argentina', x: 31, y: 75 },
+  AUS: { alpha2: 'AU', name: 'Australia', x: 81, y: 75 },
+  BRA: { alpha2: 'BR', name: 'Brazil', x: 35, y: 66 },
+  CAN: { alpha2: 'CA', name: 'Canada', x: 20, y: 25 },
+  CHN: { alpha2: 'CN', name: 'China', x: 72, y: 43 },
+  DEU: { alpha2: 'DE', name: 'Germany', x: 50, y: 35 },
+  ESP: { alpha2: 'ES', name: 'Spain', x: 46, y: 43 },
+  FRA: { alpha2: 'FR', name: 'France', x: 48, y: 39 },
+  GBR: { alpha2: 'GB', name: 'United Kingdom', x: 46, y: 32 },
+  IDN: { alpha2: 'ID', name: 'Indonesia', x: 74, y: 65 },
+  IND: { alpha2: 'IN', name: 'India', x: 66, y: 52 },
+  ITA: { alpha2: 'IT', name: 'Italy', x: 51, y: 43 },
+  JPN: { alpha2: 'JP', name: 'Japan', x: 82, y: 43 },
+  MEX: { alpha2: 'MX', name: 'Mexico', x: 20, y: 50 },
+  NLD: { alpha2: 'NL', name: 'Netherlands', x: 49, y: 34 },
+  SGP: { alpha2: 'SG', name: 'Singapore', x: 71, y: 61 },
+  TUR: { alpha2: 'TR', name: 'Turkey', x: 56, y: 44 },
+  UKR: { alpha2: 'UA', name: 'Ukraine', x: 55, y: 35 },
+  USA: { alpha2: 'US', name: 'United States', x: 23, y: 43 },
+  VNM: { alpha2: 'VN', name: 'Vietnam', x: 72, y: 55 },
+  ZAF: { alpha2: 'ZA', name: 'South Africa', x: 54, y: 78 }
+};
+
+const GEO_ALPHA2_TO_ALPHA3 = Object.fromEntries(
+  Object.entries(GEO_COUNTRY_META).map(([alpha3, meta]) => [meta.alpha2, alpha3])
+);
+
+function normalizedCountryCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  return code.length === 2 ? GEO_ALPHA2_TO_ALPHA3[code] || code : code;
+}
+
+function displayCountryName(country) {
+  const code = normalizedCountryCode(country?.country);
+  const meta = GEO_COUNTRY_META[code];
+  return country?.country_label && country.country_label !== code ? country.country_label : meta?.name || code || 'Unknown';
+}
+
+function GeoWorldMap({ rows, focusedCountryCode }) {
+  const maxImpressions = Math.max(...(rows || []).map((row) => Number(row.impressions || 0)), 0);
+  const plottedRows = (rows || [])
+    .map((row, index) => {
+      const code = normalizedCountryCode(row.country);
+      const meta = GEO_COUNTRY_META[code] || {
+        name: row.country_label || code || 'Unknown',
+        x: 12 + ((index * 11) % 76),
+        y: 28 + ((index * 17) % 50)
+      };
+      const intensity = maxImpressions ? Math.max(0.1, Number(row.impressions || 0) / maxImpressions) : 0.1;
+      return { ...row, code, meta, intensity };
+    });
+
+  return (
+    <div className={`geo-world-map ${focusedCountryCode ? 'is-focused' : ''}`}>
+      <svg viewBox="0 0 1000 520" role="img" aria-label="World map showing Google Search Console geographic presence">
+        <defs>
+          <linearGradient id="geoLand" x1="0" x2="1">
+            <stop offset="0" stopColor="#f8fafc" />
+            <stop offset="1" stopColor="#fff4e5" />
+          </linearGradient>
+          <filter id="geoGlow">
+            <feGaussianBlur stdDeviation="7" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <rect width="1000" height="520" rx="34" fill="#f8fbff" />
+        <path className="geo-map-grid-line" d="M80 260H920M500 60V460M170 80C250 170 250 350 170 440M830 80C750 170 750 350 830 440" />
+        <g className="geo-land">
+          <path d="M120 138c54-58 159-72 230-34 46 24 53 78 23 121-28 40-79 48-118 75-49 33-91 41-138 4-46-36-53-116 3-166z" />
+          <path d="M294 300c39 19 74 55 77 103 3 43-25 79-58 94-33-44-72-84-66-139 3-27 18-48 47-58z" />
+          <path d="M441 123c63-42 159-44 235-19 64 21 136 40 176 98 39 56-1 101-64 103-41 2-72-17-109-24-42-8-82 14-123 5-54-11-92-50-124-94-17-24-16-51 9-69z" />
+          <path d="M532 294c46-20 95-5 128 30 36 38 41 91 20 139-42 13-92 13-129-16-50-38-63-120-19-153z" />
+          <path d="M716 344c56-38 143-20 181 34 26 37 10 84-33 99-56-12-123-30-158-78-12-17-8-42 10-55z" />
+        </g>
+        {plottedRows.map((row) => {
+          const focused = !focusedCountryCode || row.code === focusedCountryCode;
+          const radius = 8 + row.intensity * 25;
+          return (
+            <g
+              className={`geo-map-point ${focused ? 'active' : 'muted'}`}
+              key={`${row.country}-${row.id}`}
+              transform={`translate(${row.meta.x * 10} ${row.meta.y * 5.2})`}
+            >
+              <circle r={radius + 10} opacity={0.12 + row.intensity * 0.2} filter="url(#geoGlow)" />
+              <circle r={radius} />
+              <text y={radius + 20}>{row.code}</text>
+              <title>{`${displayCountryName(row)}: ${row.impressions} impressions, ${row.clicks} clicks`}</title>
+            </g>
+          );
+        })}
+      </svg>
+      {!plottedRows.length ? (
+        <div className="geo-map-empty">
+          <SettingsIcon name="globe" />
+          <strong>No GEO rows saved yet</strong>
+          <span>Click Sync Search Console after connecting a verified property. Hummingbird stores every country row by company workspace.</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function GeoCountryFocus({ country }) {
+  return (
+    <div className="geo-country-focus">
+      <div>
+        <small>Selected country</small>
+        <strong>{displayCountryName(country)}</strong>
+      </div>
+      <div><small>Clicks</small><strong>{country.clicks}</strong></div>
+      <div><small>Impressions</small><strong>{country.impressions}</strong></div>
+      <div><small>CTR</small><strong>{(Number(country.ctr || 0) * 100).toFixed(2)}%</strong></div>
+      <div><small>Avg position</small><strong>{Number(country.position || 0).toFixed(1)}</strong></div>
+    </div>
   );
 }
 

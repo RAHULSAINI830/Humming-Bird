@@ -1101,6 +1101,7 @@ function geoDashboardPayload(companyId) {
   const weightedPosition = countryRows.reduce((sum, row) => sum + Number(row.position || 0) * Number(row.impressions || 0), 0);
 
   return {
+    companyId,
     connected: Boolean(connection && connection.status === 'connected'),
     connection: connection ? {
       google_email: connection.google_email,
