@@ -480,8 +480,6 @@ export function labelForView(view) {
   return 'Page';
 }
 
-export default App;
-
 export function DashboardEmptyBlock({ title, text }) {
   return (
     <div className="dashboard-empty-block">
@@ -526,4 +524,3 @@ export function SettingsIcon({ name }) {
 
   return <svg {...common}>{icons[name] || icons.file}</svg>;
 }
-
