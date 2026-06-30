@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const HUMMINGBIRD_LOGO = '/app/Himmingbird%20ai%20full%20logo.svg';
 
@@ -1932,49 +1934,36 @@ function GeoVisibility({ data, onChange, workspace }) {
             <Metric title="Avg Position" value={summary.position ? summary.position.toFixed(1) : 'NA'} helper="Weighted by impressions" />
           </div>
 
-          <div className="geo-body-grid">
-            <article className="geo-map-card">
-              <div className="dashboard-panel-head">
-                <div>
-                  <h2>Geographic heat map</h2>
-                  <p>{countries.length ? 'World view from saved Search Console country rows.' : 'Connect and sync Search Console to populate the map.'}</p>
-                </div>
-                <div className="geo-map-controls">
-                  <div className="geo-mode-toggle">
-                    <button type="button" className={mapMode === 'world' ? 'active' : ''} onClick={() => setMapMode('world')}>World</button>
-                    <button type="button" className={mapMode === 'country' ? 'active' : ''} onClick={() => setMapMode('country')}>Country</button>
-                  </div>
-                  <select
-                    value={normalizedCountryCode(activeCountry?.country)}
-                    onChange={(event) => {
-                      setSelectedCountry(event.target.value);
-                      setMapMode('country');
-                    }}
-                    disabled={!sortedCountries.length}
-                  >
-                    {sortedCountries.length ? sortedCountries.map((country) => (
-                      <option key={`${country.country}-${country.id}`} value={normalizedCountryCode(country.country)}>
-                        {displayCountryName(country)} · {country.impressions} impressions
-                      </option>
-                    )) : <option>No synced countries</option>}
-                  </select>
-                </div>
+          <article className="geo-map-card">
+            <div className="dashboard-panel-head">
+              <div>
+                <h2>Geographic heat map</h2>
+                <p>{countries.length ? 'Interactive OpenStreetMap view from saved Search Console country rows.' : 'Connect and sync Search Console to populate the map.'}</p>
               </div>
-              <GeoWorldMap rows={sortedCountries} focusedCountryCode={focusedCountryCode} />
-              {mapMode === 'country' && activeCountry ? <GeoCountryFocus country={activeCountry} /> : null}
-            </article>
-
-            <article className="geo-side-card">
-              <p className="eyebrow">How this is generated</p>
-              <h2>Accurate source: Google Search Console</h2>
-              <p>Hummingbird pulls Search Analytics rows by country, query, and page for the selected property, saves them in the database, and renders this page from stored rows.</p>
-              <ol>
-                <li>Connect Google Search Console.</li>
-                <li>Select the verified website property.</li>
-                <li>Sync the last 28 days of data.</li>
-              </ol>
-            </article>
-          </div>
+              <div className="geo-map-controls">
+                <div className="geo-mode-toggle">
+                  <button type="button" className={mapMode === 'world' ? 'active' : ''} onClick={() => setMapMode('world')}>World</button>
+                  <button type="button" className={mapMode === 'country' ? 'active' : ''} onClick={() => setMapMode('country')}>Country</button>
+                </div>
+                <select
+                  value={normalizedCountryCode(activeCountry?.country)}
+                  onChange={(event) => {
+                    setSelectedCountry(event.target.value);
+                    setMapMode('country');
+                  }}
+                  disabled={!sortedCountries.length}
+                >
+                  {sortedCountries.length ? sortedCountries.map((country) => (
+                    <option key={`${country.country}-${country.id}`} value={normalizedCountryCode(country.country)}>
+                      {displayCountryName(country)} · {country.impressions} impressions
+                    </option>
+                  )) : <option>No synced countries</option>}
+                </select>
+              </div>
+            </div>
+            <GeoLeafletMap rows={sortedCountries} focusedCountryCode={focusedCountryCode} />
+            {mapMode === 'country' && activeCountry ? <GeoCountryFocus country={activeCountry} /> : null}
+          </article>
 
           <div className="dashboard-table-grid">
             <DashboardPanel title="Top countries" action="By impressions">
@@ -1991,27 +1980,29 @@ function GeoVisibility({ data, onChange, workspace }) {
 }
 
 const GEO_COUNTRY_META = {
-  ARG: { alpha2: 'AR', name: 'Argentina', x: 31, y: 75 },
-  AUS: { alpha2: 'AU', name: 'Australia', x: 81, y: 75 },
-  BRA: { alpha2: 'BR', name: 'Brazil', x: 35, y: 66 },
-  CAN: { alpha2: 'CA', name: 'Canada', x: 20, y: 25 },
-  CHN: { alpha2: 'CN', name: 'China', x: 72, y: 43 },
-  DEU: { alpha2: 'DE', name: 'Germany', x: 50, y: 35 },
-  ESP: { alpha2: 'ES', name: 'Spain', x: 46, y: 43 },
-  FRA: { alpha2: 'FR', name: 'France', x: 48, y: 39 },
-  GBR: { alpha2: 'GB', name: 'United Kingdom', x: 46, y: 32 },
-  IDN: { alpha2: 'ID', name: 'Indonesia', x: 74, y: 65 },
-  IND: { alpha2: 'IN', name: 'India', x: 66, y: 52 },
-  ITA: { alpha2: 'IT', name: 'Italy', x: 51, y: 43 },
-  JPN: { alpha2: 'JP', name: 'Japan', x: 82, y: 43 },
-  MEX: { alpha2: 'MX', name: 'Mexico', x: 20, y: 50 },
-  NLD: { alpha2: 'NL', name: 'Netherlands', x: 49, y: 34 },
-  SGP: { alpha2: 'SG', name: 'Singapore', x: 71, y: 61 },
-  TUR: { alpha2: 'TR', name: 'Turkey', x: 56, y: 44 },
-  UKR: { alpha2: 'UA', name: 'Ukraine', x: 55, y: 35 },
-  USA: { alpha2: 'US', name: 'United States', x: 23, y: 43 },
-  VNM: { alpha2: 'VN', name: 'Vietnam', x: 72, y: 55 },
-  ZAF: { alpha2: 'ZA', name: 'South Africa', x: 54, y: 78 }
+  ARG: { alpha2: 'AR', name: 'Argentina', lat: -38.4, lng: -63.6 },
+  AUS: { alpha2: 'AU', name: 'Australia', lat: -25.3, lng: 133.8 },
+  BRA: { alpha2: 'BR', name: 'Brazil', lat: -14.2, lng: -51.9 },
+  CAN: { alpha2: 'CA', name: 'Canada', lat: 56.1, lng: -106.3 },
+  CHN: { alpha2: 'CN', name: 'China', lat: 35.9, lng: 104.2 },
+  DEU: { alpha2: 'DE', name: 'Germany', lat: 51.2, lng: 10.4 },
+  ESP: { alpha2: 'ES', name: 'Spain', lat: 40.5, lng: -3.7 },
+  FRA: { alpha2: 'FR', name: 'France', lat: 46.2, lng: 2.2 },
+  GBR: { alpha2: 'GB', name: 'United Kingdom', lat: 55.4, lng: -3.4 },
+  IDN: { alpha2: 'ID', name: 'Indonesia', lat: -0.8, lng: 113.9 },
+  IND: { alpha2: 'IN', name: 'India', lat: 20.6, lng: 78.9 },
+  ITA: { alpha2: 'IT', name: 'Italy', lat: 41.9, lng: 12.6 },
+  JPN: { alpha2: 'JP', name: 'Japan', lat: 36.2, lng: 138.3 },
+  MEX: { alpha2: 'MX', name: 'Mexico', lat: 23.6, lng: -102.5 },
+  NLD: { alpha2: 'NL', name: 'Netherlands', lat: 52.1, lng: 5.3 },
+  PHL: { alpha2: 'PH', name: 'Philippines', lat: 12.9, lng: 121.8 },
+  SGP: { alpha2: 'SG', name: 'Singapore', lat: 1.35, lng: 103.8 },
+  THA: { alpha2: 'TH', name: 'Thailand', lat: 15.8, lng: 101.0 },
+  TUR: { alpha2: 'TR', name: 'Turkey', lat: 39.0, lng: 35.2 },
+  UKR: { alpha2: 'UA', name: 'Ukraine', lat: 48.4, lng: 31.2 },
+  USA: { alpha2: 'US', name: 'United States', lat: 39.8, lng: -98.6 },
+  VNM: { alpha2: 'VN', name: 'Vietnam', lat: 14.1, lng: 108.3 },
+  ZAF: { alpha2: 'ZA', name: 'South Africa', lat: -30.6, lng: 22.9 }
 };
 
 const GEO_ALPHA2_TO_ALPHA3 = Object.fromEntries(
@@ -2029,62 +2020,78 @@ function displayCountryName(country) {
   return country?.country_label && country.country_label !== code ? country.country_label : meta?.name || code || 'Unknown';
 }
 
-function GeoWorldMap({ rows, focusedCountryCode }) {
+function GeoLeafletMap({ rows, focusedCountryCode }) {
+  const mapElementRef = useRef(null);
+  const mapRef = useRef(null);
+  const layerRef = useRef(null);
   const maxImpressions = Math.max(...(rows || []).map((row) => Number(row.impressions || 0)), 0);
-  const plottedRows = (rows || [])
-    .map((row, index) => {
-      const code = normalizedCountryCode(row.country);
-      const meta = GEO_COUNTRY_META[code] || {
-        name: row.country_label || code || 'Unknown',
-        x: 12 + ((index * 11) % 76),
-        y: 28 + ((index * 17) % 50)
-      };
-      const intensity = maxImpressions ? Math.max(0.1, Number(row.impressions || 0) / maxImpressions) : 0.1;
-      return { ...row, code, meta, intensity };
+  const plottedRows = (rows || []).map((row) => {
+    const code = normalizedCountryCode(row.country);
+    const meta = GEO_COUNTRY_META[code] || { name: row.country_label || code || 'Unknown', lat: 0, lng: 0 };
+    const intensity = maxImpressions ? Math.max(0.1, Number(row.impressions || 0) / maxImpressions) : 0.1;
+    return { ...row, code, meta, intensity };
+  });
+
+  useEffect(() => {
+    if (!mapElementRef.current || mapRef.current) return;
+
+    mapRef.current = L.map(mapElementRef.current, {
+      zoomControl: false,
+      scrollWheelZoom: false,
+      attributionControl: true
+    }).setView([22, 10], 2);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(mapRef.current);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 8,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(mapRef.current);
+    layerRef.current = L.layerGroup().addTo(mapRef.current);
+
+    return () => {
+      mapRef.current?.remove();
+      mapRef.current = null;
+      layerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current || !layerRef.current) return;
+
+    layerRef.current.clearLayers();
+
+    plottedRows.forEach((row) => {
+      const isFocused = !focusedCountryCode || row.code === focusedCountryCode;
+      const radius = 7 + row.intensity * 28;
+      const marker = L.circleMarker([row.meta.lat, row.meta.lng], {
+        radius,
+        color: isFocused ? '#000142' : '#ff9d00',
+        fillColor: isFocused ? '#ff9d00' : '#ffbf5c',
+        fillOpacity: isFocused ? 0.72 : 0.24,
+        opacity: isFocused ? 1 : 0.34,
+        weight: isFocused ? 3 : 1.5
+      });
+      marker.bindPopup(`
+        <strong>${displayCountryName(row)}</strong><br/>
+        ${Number(row.impressions || 0).toLocaleString()} impressions<br/>
+        ${Number(row.clicks || 0).toLocaleString()} clicks<br/>
+        CTR ${(Number(row.ctr || 0) * 100).toFixed(2)}%
+      `);
+      marker.addTo(layerRef.current);
     });
 
+    const focusedRow = plottedRows.find((row) => row.code === focusedCountryCode);
+
+    if (focusedRow) {
+      mapRef.current.flyTo([focusedRow.meta.lat, focusedRow.meta.lng], 4, { duration: 0.7 });
+    } else {
+      mapRef.current.flyTo([22, 10], 2, { duration: 0.7 });
+    }
+  }, [focusedCountryCode, maxImpressions, rows]);
+
   return (
-    <div className={`geo-world-map ${focusedCountryCode ? 'is-focused' : ''}`}>
-      <svg viewBox="0 0 1000 520" role="img" aria-label="World map showing Google Search Console geographic presence">
-        <defs>
-          <linearGradient id="geoLand" x1="0" x2="1">
-            <stop offset="0" stopColor="#f8fafc" />
-            <stop offset="1" stopColor="#fff4e5" />
-          </linearGradient>
-          <filter id="geoGlow">
-            <feGaussianBlur stdDeviation="7" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <rect width="1000" height="520" rx="34" fill="#f8fbff" />
-        <path className="geo-map-grid-line" d="M80 260H920M500 60V460M170 80C250 170 250 350 170 440M830 80C750 170 750 350 830 440" />
-        <g className="geo-land">
-          <path d="M120 138c54-58 159-72 230-34 46 24 53 78 23 121-28 40-79 48-118 75-49 33-91 41-138 4-46-36-53-116 3-166z" />
-          <path d="M294 300c39 19 74 55 77 103 3 43-25 79-58 94-33-44-72-84-66-139 3-27 18-48 47-58z" />
-          <path d="M441 123c63-42 159-44 235-19 64 21 136 40 176 98 39 56-1 101-64 103-41 2-72-17-109-24-42-8-82 14-123 5-54-11-92-50-124-94-17-24-16-51 9-69z" />
-          <path d="M532 294c46-20 95-5 128 30 36 38 41 91 20 139-42 13-92 13-129-16-50-38-63-120-19-153z" />
-          <path d="M716 344c56-38 143-20 181 34 26 37 10 84-33 99-56-12-123-30-158-78-12-17-8-42 10-55z" />
-        </g>
-        {plottedRows.map((row) => {
-          const focused = !focusedCountryCode || row.code === focusedCountryCode;
-          const radius = 8 + row.intensity * 25;
-          return (
-            <g
-              className={`geo-map-point ${focused ? 'active' : 'muted'}`}
-              key={`${row.country}-${row.id}`}
-              transform={`translate(${row.meta.x * 10} ${row.meta.y * 5.2})`}
-            >
-              <circle r={radius + 10} opacity={0.12 + row.intensity * 0.2} filter="url(#geoGlow)" />
-              <circle r={radius} />
-              <text y={radius + 20}>{row.code}</text>
-              <title>{`${displayCountryName(row)}: ${row.impressions} impressions, ${row.clicks} clicks`}</title>
-            </g>
-          );
-        })}
-      </svg>
+    <div className="geo-world-map">
+      <div ref={mapElementRef} className="geo-leaflet-map" aria-label="World map showing Google Search Console geographic presence" />
       {!plottedRows.length ? (
         <div className="geo-map-empty">
           <SettingsIcon name="globe" />
