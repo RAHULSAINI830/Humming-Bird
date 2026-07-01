@@ -314,6 +314,7 @@ function App() {
                 className={activeView === view ? 'active' : ''}
               >
                 <span>{icon}</span> {label}
+                {view === 'geo' ? <em className="nav-beta-tag">Beta</em> : null}
               </button>
               {view === 'geo' ? (
                 <div className={`sidebar-child-nav ${activeView === 'geo' ? 'open' : ''}`}>

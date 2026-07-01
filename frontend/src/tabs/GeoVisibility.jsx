@@ -100,7 +100,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
     <section className="page-content">
       <PageHeader
         eyebrow="GEO Visibility"
-        title="Geographic search presence"
+        title={<span className="title-with-beta">Geographic search presence <span className="beta-badge">Beta</span></span>}
         subtitle="Real country, query, and page data synced from Google Search Console and saved to your database."
         workspace={workspace}
         action={canManage && data?.connected ? (

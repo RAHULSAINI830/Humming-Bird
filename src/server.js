@@ -84,6 +84,12 @@ const USER_MANAGEMENT_ROLES = ['Developer', 'Super Admin', 'Business Owner'];
 const CONTENT_MANAGEMENT_ROLES = ['Developer', 'Super Admin', 'Business Owner', 'Marketing Manager'];
 const GEO_MANAGEMENT_ROLES = CONTENT_MANAGEMENT_ROLES;
 const GOOGLE_SEARCH_CONSOLE_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/userinfo.email';
+const SIGNUP_MODE = String(process.env.SIGNUP_MODE || 'open').toLowerCase();
+const SIGNUP_INVITE_CODE = String(process.env.SIGNUP_INVITE_CODE || '').trim();
+const SIGNUP_ALLOWED_DOMAINS = String(process.env.SIGNUP_ALLOWED_DOMAINS || '')
+  .split(',')
+  .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
+  .filter(Boolean);
 
 initDatabase();
 
@@ -271,6 +277,54 @@ function safeErrorDetail(error) {
     detail: String(error?.message || '').slice(0, 500),
     code: error?.code || ''
   };
+}
+
+function signupIsClosed() {
+  return SIGNUP_MODE === 'closed' || SIGNUP_MODE === 'disabled';
+}
+
+function signupRequiresInvite() {
+  return SIGNUP_MODE === 'invite' || SIGNUP_MODE === 'invite-only';
+}
+
+function emailDomain(email) {
+  return String(email || '').split('@').pop().toLowerCase();
+}
+
+function validateSignupGate(body, email) {
+  if (signupIsClosed()) {
+    return {
+      error: 'Public signup is currently closed. Please ask the Hummingbird team for access.',
+      errors: { signup: 'Signup is closed.' },
+      status: 403
+    };
+  }
+
+  if (signupRequiresInvite()) {
+    const inviteCode = String(body.inviteCode || '').trim();
+
+    if (!SIGNUP_INVITE_CODE || inviteCode !== SIGNUP_INVITE_CODE) {
+      return {
+        error: 'Enter a valid invite code to create a Hummingbird workspace.',
+        errors: { inviteCode: 'Valid invite code is required.' },
+        status: 403
+      };
+    }
+  }
+
+  if (SIGNUP_ALLOWED_DOMAINS.length && email) {
+    const domain = emailDomain(email);
+
+    if (!SIGNUP_ALLOWED_DOMAINS.includes(domain)) {
+      return {
+        error: 'This email domain is not allowed for signup.',
+        errors: { email: 'Use an approved company email address.' },
+        status: 403
+      };
+    }
+  }
+
+  return null;
 }
 
 function aiErrorResponse(error, fallbackMessage) {
@@ -1861,6 +1915,14 @@ async function handleSignup(req, res) {
   const websiteUrl = normalize(body.websiteUrl);
   const logoUrl = normalize(body.logoUrl);
   const errors = {};
+  const signupGateError = validateSignupGate(body, email);
+
+  if (signupGateError) {
+    return sendJson(res, {
+      error: signupGateError.error,
+      errors: signupGateError.errors
+    }, signupGateError.status);
+  }
 
   if (!fullName) errors.fullName = 'Full name is required.';
   if (!email || !isValidEmail(email)) errors.email = 'Valid email is required.';

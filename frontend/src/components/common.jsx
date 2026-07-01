@@ -334,6 +334,7 @@ export function AuthScreen({ mode, setMode, onAuthenticated }) {
                 <Input label="Email" type="email" value={form.email} error={fieldErrors.email} onChange={(value) => update('email', value)} />
                 <Input label="Password" type="password" value={form.password} error={fieldErrors.password} onChange={(value) => update('password', value)} />
                 <Input label="Confirm Password" type="password" value={form.confirmPassword} error={fieldErrors.confirmPassword} onChange={(value) => update('confirmPassword', value)} />
+                <Input label="Invite Code" value={form.inviteCode} error={fieldErrors.inviteCode} optional onChange={(value) => update('inviteCode', value)} className="wide" />
               </FormSection>
 
               <FormSection title="Company Workspace">
