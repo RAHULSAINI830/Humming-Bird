@@ -871,14 +871,41 @@ function requireSetupManager(req, res) {
   return context;
 }
 
-function publicBaseUrl(req) {
+function requestBaseUrl(req) {
   const forwardedProto = req.headers['x-forwarded-proto'];
+  const forwardedHost = req.headers['x-forwarded-host'];
   const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto || 'http';
-  return process.env.PUBLIC_APP_URL || `${proto}://${req.headers.host}`;
+  const host = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+function publicBaseUrl(req) {
+  return process.env.PUBLIC_APP_URL || requestBaseUrl(req);
 }
 
 function googleRedirectUri(req) {
   return process.env.GOOGLE_REDIRECT_URI || `${publicBaseUrl(req)}/api/google/callback`;
+}
+
+function safeReturnBaseUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.host) {
+      return '';
+    }
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return '';
+  }
+}
+
+function appRedirectPath(params = '') {
+  return `/app/${params ? `?${params}` : ''}`;
+}
+
+function appReturnUrl(req, state, params = '') {
+  const returnBase = safeReturnBaseUrl(state?.returnBaseUrl) || requestBaseUrl(req);
+  return `${returnBase}${appRedirectPath(params)}`;
 }
 
 function redirect(res, location) {
@@ -1423,6 +1450,7 @@ function handleGoogleConnect(req, res) {
   authUrl.searchParams.set('state', encodeOAuthState({
     userId: context.session.userId,
     companyId: context.access.company_id,
+    returnBaseUrl: requestBaseUrl(req),
     exp: Date.now() + 10 * 60 * 1000
   }));
 
@@ -1438,7 +1466,7 @@ async function handleGoogleCallback(req, res, url) {
   }
 
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return redirect(res, '/app/?geo=not-configured');
+    return redirect(res, appReturnUrl(req, state, 'geo=not-configured'));
   }
 
   try {
@@ -1480,13 +1508,13 @@ async function handleGoogleCallback(req, res, url) {
       }
     } catch (propertiesError) {
       console.warn(`Google Search Console properties could not be fetched: ${propertiesError.message}`);
-      return redirect(res, `/app/?geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`);
+      return redirect(res, appReturnUrl(req, state, `geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`));
     }
 
-    return redirect(res, '/app/?geo=connected');
+    return redirect(res, appReturnUrl(req, state, 'geo=connected'));
   } catch (error) {
     logGoogleCallbackIssue(req, error);
-    return redirect(res, `/app/?geo=failed&reason=${safeGoogleErrorCode(error)}`);
+    return redirect(res, appReturnUrl(req, state, `geo=failed&reason=${safeGoogleErrorCode(error)}`));
   }
 }
 
