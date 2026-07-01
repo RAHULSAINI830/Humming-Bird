@@ -2821,7 +2821,11 @@ async function router(req, res) {
     }
 
     console.error(error);
-    return sendJson(res, { error: 'Internal server error' }, 500);
+    return sendJson(res, {
+      error: 'Internal server error',
+      detail: String(error?.message || '').slice(0, 500),
+      code: error?.code || ''
+    }, 500);
   }
 }
 
