@@ -1143,7 +1143,7 @@ function getLatestBusinessAnalysis(companyId) {
     SELECT *
     FROM business_analyses
     WHERE company_id = ?
-    ORDER BY datetime(created_at) DESC, id DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
   `).get(companyId);
 }
@@ -1154,7 +1154,7 @@ function getLatestCompletedBusinessAnalysis(companyId) {
     FROM business_analyses
     WHERE company_id = ?
       AND analysis_status = 'completed'
-    ORDER BY datetime(created_at) DESC, id DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
   `).get(companyId);
 }
@@ -1174,7 +1174,7 @@ function listBusinessAnalyses(companyId) {
     SELECT *
     FROM business_analyses
     WHERE company_id = ?
-    ORDER BY datetime(created_at) DESC, id DESC
+    ORDER BY created_at DESC, id DESC
   `).all(companyId);
 }
 
@@ -1209,7 +1209,7 @@ function getLatestAeoRecommendation(companyId) {
     SELECT *
     FROM aeo_recommendations
     WHERE company_id = ?
-    ORDER BY datetime(created_at) DESC, id DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
   `).get(companyId);
 }
@@ -1219,7 +1219,7 @@ function listAeoRecommendations(companyId) {
     SELECT *
     FROM aeo_recommendations
     WHERE company_id = ?
-    ORDER BY datetime(created_at) DESC, id DESC
+    ORDER BY created_at DESC, id DESC
   `).all(companyId);
 }
 
@@ -1826,7 +1826,7 @@ function listGeoCountrySnapshots(companyId, propertyUrl) {
     FROM geo_search_snapshots
     WHERE company_id = ?
       AND property_url = COALESCE(?, property_url)
-    ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
+    ORDER BY created_at DESC, impressions DESC, clicks DESC
   `).all(companyId, propertyUrl || null);
 }
 
@@ -1836,7 +1836,7 @@ function listGeoQuerySnapshots(companyId, propertyUrl) {
     FROM geo_query_snapshots
     WHERE company_id = ?
       AND property_url = COALESCE(?, property_url)
-    ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
+    ORDER BY created_at DESC, impressions DESC, clicks DESC
   `).all(companyId, propertyUrl || null);
 }
 
@@ -1848,7 +1848,7 @@ function listGeoDimensionSnapshots(companyId, propertyUrl, dimensionType, period
       AND property_url = COALESCE(?, property_url)
       AND dimension_type = ?
       AND period_label = ?
-    ORDER BY datetime(created_at) DESC, impressions DESC, clicks DESC
+    ORDER BY created_at DESC, impressions DESC, clicks DESC
   `).all(companyId, propertyUrl || null, dimensionType, periodLabel);
 }
 
