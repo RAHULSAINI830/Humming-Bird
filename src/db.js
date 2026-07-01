@@ -1,6 +1,5 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { DatabaseSync } = require('node:sqlite');
 const { hashPassword } = require('./auth');
 
 function loadLocalEnv() {
@@ -43,16 +42,18 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
+const usePostgres = Boolean(process.env.DATABASE_URL);
+const { DatabaseSync } = usePostgres ? require('./postgres-sync') : require('node:sqlite');
 const isVercel = process.env.VERCEL === '1';
 const dataDir = isVercel ? '/tmp' : path.join(__dirname, '..', 'data');
 const dbPath = path.join(dataDir, 'rango.sqlite');
 const bundledSeedDbPath = path.join(__dirname, '..', 'data', 'rango.sqlite');
 
-if (!isVercel) {
+if (!isVercel && !usePostgres) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-if (isVercel && !fs.existsSync(dbPath) && fs.existsSync(bundledSeedDbPath)) {
+if (!usePostgres && isVercel && !fs.existsSync(dbPath) && fs.existsSync(bundledSeedDbPath)) {
   try {
     fs.copyFileSync(bundledSeedDbPath, dbPath);
     fs.chmodSync(dbPath, 0o600);
@@ -63,11 +64,11 @@ if (isVercel && !fs.existsSync(dbPath) && fs.existsSync(bundledSeedDbPath)) {
 }
 
 try {
-  if (!isVercel) {
+  if (!usePostgres && !isVercel) {
     fs.chmodSync(dataDir, 0o755);
   }
 
-  if (fs.existsSync(dbPath)) {
+  if (!usePostgres && fs.existsSync(dbPath)) {
     fs.chmodSync(dbPath, 0o644);
   }
 } catch (error) {
@@ -75,7 +76,9 @@ try {
 }
 
 const db = new DatabaseSync(dbPath);
-db.exec('PRAGMA foreign_keys = ON;');
+if (!usePostgres) {
+  db.exec('PRAGMA foreign_keys = ON;');
+}
 
 function migrate() {
   db.exec(`
