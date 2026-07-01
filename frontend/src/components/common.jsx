@@ -41,7 +41,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
     { key: 'analysis', label: 'Business analysis', complete: false, description: 'Analyze company website and business profile.' },
     { key: 'competitors', label: 'Competitor discovery', complete: false, description: 'Discover related companies for comparison.' },
     { key: 'prompts', label: 'Prompt generation', complete: false, description: 'Create buyer-intent AI search prompts.' },
-    { key: 'checks', label: 'AI visibility checks', complete: false, description: 'Send prompts to Gemini and save responses.' }
+    { key: 'checks', label: 'AI visibility checks', complete: false, description: 'Send prompts to Hummingbird AI and save responses.' }
   ];
   const completed = steps.filter((step) => step.complete).length;
   const percent = Math.round((completed / steps.length) * 100);
@@ -92,7 +92,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
             <h1>Building your AI visibility platform</h1>
             <p>
               Before showing the dashboard, Hummingbird generates real business intelligence, competitors,
-              prompts, and Gemini visibility checks for <strong>{session.selectedCompanyName}</strong>.
+              prompts, and Hummingbird AI visibility checks for <strong>{session.selectedCompanyName}</strong>.
             </p>
 
             <div className="setup-company-card">
@@ -107,7 +107,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
             <div className="setup-progress-track">
               <span style={{ width: `${loading ? Math.max(percent, 18) : percent}%` }} />
             </div>
-            <small>{loading ? 'Generating with Gemini… this can take a little while.' : `${percent}% ready`}</small>
+            <small>{loading ? 'Generating with Hummingbird AI… this can take a little while.' : `${percent}% ready`}</small>
 
             {error ? <div className="notice">{error}</div> : null}
 
@@ -127,7 +127,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
                   </button>
                 ) : !hasChecks ? (
                   <button className="setup-generate-button" type="button" onClick={() => onAction('run-checks')} disabled={Boolean(loading)}>
-                    {loading === 'run-checks' ? 'Running Gemini checks…' : 'Confirm prompts & run AI checks'}
+                    {loading === 'run-checks' ? 'Running Hummingbird AI checks…' : 'Confirm prompts & run AI checks'}
                   </button>
                 ) : null}
               </div>
@@ -277,7 +277,7 @@ export function AuthScreen({ mode, setMode, onAuthenticated }) {
           Track AI visibility, prompts, competitor mentions, citations, and business intelligence from one premium workspace.
         </p>
         <div className="hero-stats">
-          <span>Gemini-ready</span>
+          <span>Hummingbird AI-ready</span>
           <span>Workspace access</span>
           <span>Role security</span>
         </div>
@@ -398,11 +398,18 @@ export function IconButton({ label, onClick }) {
 }
 
 export const providerConfigs = [
-  { key: 'gemini', label: 'Gemini', field: 'gemini_response_summary', connected: true, logoUrl: 'https://gemini.google.com' },
+  { key: 'gemini', label: 'Hummingbird AI', field: 'gemini_response_summary', connected: true, logoUrl: HUMMINGBIRD_LOGO },
   { key: 'chatgpt', label: 'ChatGPT', field: 'chatgpt_response_summary', connected: false, logoUrl: 'https://chatgpt.com' },
   { key: 'claude', label: 'Claude', field: 'claude_response_summary', connected: false, logoUrl: 'https://claude.ai' },
   { key: 'perplexity', label: 'Perplexity', field: 'perplexity_response_summary', connected: false, logoUrl: 'https://perplexity.ai' }
 ];
+
+export function displayAiSource(source) {
+  const normalized = String(source || '').trim().toLowerCase();
+  if (!normalized) return 'Hummingbird AI';
+  if (normalized === 'gemini' || normalized === 'google-gemini') return 'Hummingbird AI';
+  return source;
+}
 
 export function ProviderLogo({ providerKey }) {
   const provider = providerConfigs.find((item) => item.key === providerKey) || providerConfigs[0];

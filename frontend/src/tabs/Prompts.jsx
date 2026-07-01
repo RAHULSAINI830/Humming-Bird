@@ -52,7 +52,7 @@ export default function Prompts({ data, onChange, workspace }) {
 
       <div className="metric-grid">
         <Metric title="Total Prompts" value={summary.total ?? prompts.length} helper="Generated and manual prompts" />
-        <Metric title="Checked Prompts" value={summary.checked ?? 0} helper="Prompts sent to Gemini" />
+        <Metric title="Checked Prompts" value={summary.checked ?? 0} helper="Prompts sent to Hummingbird AI" />
         <Metric title="Brand Mentioned" value={summary.brandMentioned ?? 0} helper="Exact response contains brand" />
         <Metric title="Citation Ideas" value={summary.citations ?? 0} helper="Recommended citation pages" />
       </div>
@@ -136,11 +136,11 @@ function AiResponses({ data }) {
       <div className="page-title">
         <p className="eyebrow">AI Responses</p>
         <h1>Exact provider responses</h1>
-        <p>Gemini responses are stored now. ChatGPT, Claude, and Perplexity show NA until keys are connected.</p>
+        <p>Hummingbird AI responses are stored now. ChatGPT, Claude, and Perplexity show NA until keys are connected.</p>
       </div>
 
       <div className="metric-grid">
-        <ProviderMetric title="Gemini" value={summary.gemini ?? 0} status="Connected" active />
+        <ProviderMetric title="Hummingbird AI" value={summary.gemini ?? 0} status="Connected" providerKey="gemini" active />
         <ProviderMetric title="ChatGPT" value={summary.chatgpt ?? 0} status="NA · API key missing" />
         <ProviderMetric title="Claude" value={summary.claude ?? 0} status="NA · API key missing" />
         <ProviderMetric title="Perplexity" value={summary.perplexity ?? 0} status="NA · API key missing" />
@@ -153,7 +153,7 @@ function AiResponses({ data }) {
               <div className="response-card-head">
                 <ProviderLogo providerKey="gemini" />
                 <div>
-                  <p className="eyebrow">Gemini response</p>
+                  <p className="eyebrow">Hummingbird AI response</p>
                   <h2>Prompt #{prompt.prompt_order}</h2>
                 </div>
                 <StatusBadge active={prompt.brand_mentioned}>{prompt.brand_mentioned ? 'Brand mentioned' : 'No brand mention'}</StatusBadge>
@@ -172,7 +172,7 @@ function AiResponses({ data }) {
               <th>#</th>
               <th>Prompt</th>
               <th>Brand Mention</th>
-              <th>Gemini Exact Response</th>
+              <th>Hummingbird AI Exact Response</th>
               <th>ChatGPT</th>
               <th>Claude</th>
               <th>Perplexity</th>
@@ -306,8 +306,8 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
   );
 }
 
-function ProviderMetric({ title, value, status, active = false }) {
-  const key = title.toLowerCase().split(' ')[0];
+function ProviderMetric({ title, value, status, providerKey = '', active = false }) {
+  const key = providerKey || title.toLowerCase().split(' ')[0];
   return (
     <article className={`provider-card ${active ? 'active' : ''}`}>
       <div className="provider-card-top">

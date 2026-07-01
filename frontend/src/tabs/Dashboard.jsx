@@ -1,4 +1,4 @@
-import { LogoChip, ProviderLogo, SettingsIcon, DashboardEmptyBlock } from '../components/common';
+import { LogoChip, ProviderLogo, SettingsIcon, DashboardEmptyBlock, displayAiSource } from '../components/common';
 
 export default function Dashboard({ data, session, workspace, goTo }) {
   const progress = data?.setupProgress || { percentage: 0, completed: [], missing: [] };
@@ -151,7 +151,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
               <p className="eyebrow">Business Analysis</p>
               <h2>{analysis?.analysis_status || 'No analysis yet'}</h2>
             </div>
-            <span className="soft-pill">{analysis?.source_type || 'No source'}</span>
+            <span className="soft-pill">{analysis ? displayAiSource(analysis.source_type) : 'No source'}</span>
           </div>
           <p className="dashboard-summary-text">{analysis?.business_summary || 'Generate a business analysis first. The dashboard will use saved database results only.'}</p>
           <button type="button" onClick={() => goTo('business-analysis')}>View analysis</button>

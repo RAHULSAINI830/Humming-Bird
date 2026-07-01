@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { IconButton, Input, LogoChip, PageHeader, SideFormTray } from '../components/common';
+import { IconButton, Input, LogoChip, PageHeader, SideFormTray, displayAiSource } from '../components/common';
 
 export default function Competitors({ data, onChange, workspace }) {
   const competitors = data?.competitors || [];
@@ -62,7 +62,7 @@ export default function Competitors({ data, onChange, workspace }) {
                   </div>
                 </td>
                 <td>{competitor.website_url || 'NA'}</td>
-                <td>{competitor.source_type || 'NA'}</td>
+                <td>{displayAiSource(competitor.source_type)}</td>
                 <td>{competitor.status}</td>
               </tr>
             ))}

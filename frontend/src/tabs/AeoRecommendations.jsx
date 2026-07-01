@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { PageHeader, SettingsIcon } from '../components/common';
+import { PageHeader, SettingsIcon, displayAiSource } from '../components/common';
 
 export default function AeoRecommendations({ data, onChange, workspace, goTo }) {
   const latest = data?.latest;
@@ -30,7 +30,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
         body: '{}'
       });
       onChange(result);
-      setMessage('What’s Next plan generated from saved Gemini analysis.');
+      setMessage('What’s Next plan generated from saved Hummingbird AI analysis.');
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -58,7 +58,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
           <div className="aeo-loading-card">
             <span><SettingsIcon name="sparkles" /></span>
             <h2>Building your next-best actions</h2>
-            <p>Hummingbird is reading saved analysis, prompt checks, competitor gaps, and citation signals with Gemini.</p>
+            <p>Hummingbird AI is reading saved analysis, prompt checks, competitor gaps, and citation signals.</p>
             <div className="loading-bar"><span /></div>
           </div>
         </div>
@@ -69,7 +69,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
           <div>
             <p className="eyebrow">Ready when your tracking data is ready</p>
             <h2>Generate a real AEO focus plan after checks are saved.</h2>
-            <p>Hummingbird will use your stored Gemini business analysis, checked prompts, competitor mentions, and citation recommendations. No mock data is used.</p>
+            <p>Hummingbird will use your stored AI business analysis, checked prompts, competitor mentions, and citation recommendations. No mock data is used.</p>
             <div className="aeo-readiness">
               <div>
                 <span>Data readiness</span>
@@ -95,7 +95,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
             <div className="aeo-hero-copy">
               <div className="analysis-hero-meta">
                 <span className="pill status-completed">Stored result</span>
-                <span className="soft-pill">{latest.source_type || 'gemini'} · {latest.updated_at || latest.created_at}</span>
+                <span className="soft-pill">{displayAiSource(latest.source_type)} · {latest.updated_at || latest.created_at}</span>
               </div>
               <p className="aeo-hero-kicker">Recommended focus</p>
               <h2>{latest.focus_summary}</h2>
@@ -120,7 +120,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
           <div className="aeo-section-intro">
             <div>
               <p className="eyebrow">Where to focus</p>
-              <h2>Priority moves ranked by Gemini from your saved data</h2>
+              <h2>Priority moves ranked by Hummingbird AI from your saved data</h2>
             </div>
             <span>{priorities.length} focus areas</span>
           </div>

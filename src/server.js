@@ -653,7 +653,7 @@ function topEntries(map, limit = 10) {
 function dashboardVisibilitySummary(prompts, company) {
   const enriched = enrichPrompts(prompts);
   const providerDefinitions = [
-    ['gemini', 'Gemini', 'gemini_response_summary'],
+    ['gemini', 'Hummingbird AI', 'gemini_response_summary'],
     ['chatgpt', 'ChatGPT', 'chatgpt_response_summary'],
     ['claude', 'Claude', 'claude_response_summary'],
     ['perplexity', 'Perplexity', 'perplexity_response_summary']
@@ -2248,7 +2248,7 @@ async function handleGenerateAeoRecommendations(req, res) {
     return handleAeoRecommendations(req, res);
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Gemini could not generate the AEO action plan. Please retry.' }, 500);
+    return sendJson(res, { error: 'Hummingbird AI could not generate the AEO action plan. Please retry.' }, 500);
   }
 }
 
