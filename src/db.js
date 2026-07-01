@@ -1593,8 +1593,9 @@ function disconnectGoogleConnection(companyId) {
   `).run(companyId);
 }
 
-function replaceSearchConsoleProperties(companyId, properties) {
+function replaceSearchConsoleProperties(companyId, properties, options = {}) {
   const currentSelected = getSelectedSearchConsoleProperty(companyId)?.site_url;
+  const autoSelectFirst = options.autoSelectFirst !== false;
   const insertProperty = db.prepare(`
     INSERT INTO search_console_properties (company_id, site_url, permission_level, selected)
     VALUES (?, ?, ?, ?)
@@ -1619,7 +1620,7 @@ function replaceSearchConsoleProperties(companyId, properties) {
         companyId,
         siteUrl,
         property.permissionLevel || property.permission_level || '',
-        siteUrl === currentSelected || (!currentSelected && index === 0) ? 1 : 0
+        siteUrl === currentSelected || (autoSelectFirst && !currentSelected && index === 0) ? 1 : 0
       );
     });
 

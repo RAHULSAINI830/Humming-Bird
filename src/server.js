@@ -1669,33 +1669,13 @@ async function handleGoogleCallback(req, res, url) {
 
     try {
       const properties = await fetchSearchConsoleProperties(tokenData.access_token);
-      replaceSearchConsoleProperties(Number(state.companyId), properties);
-
-      const selected = bestSearchConsoleProperty(getDeveloperCompanyAccess(Number(state.companyId)), properties);
-      if (selected) {
-        setSelectedSearchConsoleProperty(Number(state.companyId), selected);
-      }
+      replaceSearchConsoleProperties(Number(state.companyId), properties, { autoSelectFirst: false });
     } catch (propertiesError) {
       console.warn(`Google Search Console properties could not be fetched: ${propertiesError.message}`);
       return redirect(res, appReturnUrl(req, state, `geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`, 'geo'));
     }
 
-    try {
-      const syncResult = await syncGeoForCompany(Number(state.companyId));
-
-      if (syncResult?.skipped) {
-        return redirect(res, appReturnUrl(req, state, `geo=connected-no-data&reason=${syncResult.reason || 'no-data'}`, 'geo'));
-      }
-
-      if (!syncResult.countryRows && !syncResult.queryRows && !syncResult.dateRows) {
-        return redirect(res, appReturnUrl(req, state, 'geo=connected-no-data&reason=no-search-analytics-rows', 'geo'));
-      }
-    } catch (syncError) {
-      console.warn(`Google Search Console auto-sync failed: ${syncError.message}`);
-      return redirect(res, appReturnUrl(req, state, `geo=connected-sync-failed&reason=${safeGoogleErrorCode(syncError)}`, 'geo'));
-    }
-
-    return redirect(res, appReturnUrl(req, state, 'geo=connected', 'geo'));
+    return redirect(res, appReturnUrl(req, state, 'geo=connected-select-property', 'geo'));
   } catch (error) {
     logGoogleCallbackIssue(req, error);
     return redirect(res, appReturnUrl(req, state, `geo=failed&reason=${safeGoogleErrorCode(error)}`, 'geo'));
@@ -1725,7 +1705,24 @@ async function handleSelectGeoProperty(req, res) {
   }
 
   setSelectedSearchConsoleProperty(context.access.company_id, propertyUrl);
-  return sendJson(res, geoDashboardPayload(context.access.company_id));
+
+  try {
+    const syncResult = await syncGeoForCompany(context.access.company_id);
+
+    return sendJson(res, {
+      ...geoDashboardPayload(context.access.company_id),
+      syncResult
+    });
+  } catch (error) {
+    return sendJson(res, {
+      ...geoDashboardPayload(context.access.company_id),
+      syncError: {
+        error: error.message || 'Search Console sync failed after selecting property.',
+        detail: error.googleDescription || error.googleError || '',
+        code: safeGoogleErrorCode(error)
+      }
+    });
+  }
 }
 
 async function syncGeoForCompany(companyId) {

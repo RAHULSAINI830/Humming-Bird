@@ -2481,6 +2481,7 @@ button {
 
 .geo-connect-card,
 .geo-toolbar,
+.geo-property-picker-card,
 .geo-map-card {
   border: 1px solid var(--line);
   border-radius: 28px;
@@ -2527,6 +2528,101 @@ button {
   display: flex;
   align-items: flex-end;
   gap: 12px;
+}
+
+.geo-locked-property {
+  display: grid;
+  min-width: min(420px, 44vw);
+  gap: 4px;
+  padding: 13px 15px;
+  border: 1px solid #e4ebf4;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 92% 16%, rgba(255, 157, 0, 0.1), transparent 34%),
+    #ffffff;
+}
+
+.geo-locked-property span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.geo-locked-property strong {
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 900;
+  word-break: break-word;
+}
+
+.geo-locked-property small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 720;
+}
+
+.geo-property-picker-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1fr);
+  gap: 22px;
+  padding: clamp(24px, 3vw, 34px);
+  background:
+    radial-gradient(circle at 92% 14%, rgba(255, 157, 0, 0.16), transparent 34%),
+    linear-gradient(135deg, #ffffff, #fbfdff);
+}
+
+.geo-property-picker-card h2 {
+  margin: 0 0 10px;
+  color: var(--primary);
+  font-size: clamp(24px, 2.1vw, 32px);
+  letter-spacing: -0.04em;
+}
+
+.geo-property-picker-card p:not(.eyebrow) {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.geo-property-list {
+  display: grid;
+  gap: 10px;
+}
+
+.geo-property-list button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid #e4ebf4;
+  border-radius: 18px;
+  text-align: left;
+  background: #ffffff;
+  box-shadow: 0 14px 36px rgba(8, 17, 39, 0.05);
+}
+
+.geo-property-list button:hover {
+  border-color: rgba(255, 157, 0, 0.42);
+  box-shadow: 0 18px 44px rgba(255, 157, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.geo-property-list button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.geo-property-list button span {
+  color: var(--primary);
+  font-weight: 900;
+  word-break: break-word;
+}
+
+.geo-property-list button small {
+  color: var(--muted);
+  font-weight: 760;
 }
 
 .geo-toolbar label {

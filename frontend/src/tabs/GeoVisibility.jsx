@@ -27,6 +27,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   const comparison = data?.comparison || {};
   const diagnostics = data?.diagnostics || {};
   const canManage = Boolean(data?.canManage);
+  const hasLockedProperty = Boolean(data?.selectedProperty?.site_url);
   const sortedCountries = [...countries].sort((a, b) => Number(b.impressions || 0) - Number(a.impressions || 0));
   const activeCountry = sortedCountries.find((country) => normalizedCountryCode(country.country) === selectedCountry) || sortedCountries[0] || null;
   const focusedCountryCode = mapMode === 'country' ? normalizedCountryCode(activeCountry?.country) : '';
@@ -90,6 +91,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
         body: JSON.stringify({ propertyUrl: event.target.value })
       });
       onChange(result);
+      setMessage(result.syncError?.error || 'Search Console property selected and data sync started.');
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -104,7 +106,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
         title={<span className="title-with-beta">Geographic search presence <span className="beta-badge">Beta</span></span>}
         subtitle="Real country, query, and page data synced from Google Search Console and saved to your database."
         workspace={workspace}
-        action={canManage && data?.connected ? (
+        action={canManage && data?.connected && data?.selectedProperty?.site_url ? (
           <button type="button" className="primary-button slim" onClick={syncGeo} disabled={loading === 'sync'}>
             {loading === 'sync' ? 'Refreshing…' : 'Refresh Search Console'}
           </button>
@@ -154,14 +156,11 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
               ) : null}
             </div>
             <div className="geo-toolbar-actions">
-              <label>
-                Search Console property
-                <select value={data.selectedProperty?.site_url || ''} onChange={selectProperty} disabled={!canManage || loading === 'property'}>
-                  {properties.map((property) => (
-                    <option key={property.site_url} value={property.site_url}>{property.site_url}</option>
-                  ))}
-                </select>
-              </label>
+              <div className="geo-locked-property">
+                <span>{hasLockedProperty ? 'Tracking property' : 'Property selection required'}</span>
+                <strong>{data.selectedProperty?.site_url || 'No property selected yet'}</strong>
+                <small>{hasLockedProperty ? 'Locked for this workspace. Disconnect to choose a different property.' : 'Choose one property below to start syncing real Search Console data.'}</small>
+              </div>
               {canManage ? (
                 <>
                   <button type="button" className="ghost-neutral-button" onClick={clearSavedGeoData} disabled={loading === 'clear'}>
@@ -175,7 +174,31 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
             </div>
           </article>
 
-          {message ? <div className={message.includes('refreshed') || message.includes('disconnected') || message.includes('cleared') ? 'success-notice' : 'notice'}>{message}</div> : null}
+          {message ? <div className={message.includes('refreshed') || message.includes('disconnected') || message.includes('cleared') || message.includes('selected') ? 'success-notice' : 'notice'}>{message}</div> : null}
+
+          {data?.connected && canManage && !hasLockedProperty ? (
+            <article className="geo-property-picker-card">
+              <div>
+                <p className="eyebrow">Choose Search Console property</p>
+                <h2>Select the website property to track</h2>
+                <p>Hummingbird will lock this property for the workspace and sync the latest Search Analytics rows. You can disconnect later if you need to choose another property.</p>
+              </div>
+              <div className="geo-property-list">
+                {properties.map((property) => (
+                  <button
+                    type="button"
+                    key={property.site_url}
+                    onClick={() => selectProperty({ target: { value: property.site_url } })}
+                    disabled={loading === 'property'}
+                  >
+                    <span>{property.site_url}</span>
+                    <small>{property.permission_level || 'Search Console property'}</small>
+                  </button>
+                ))}
+                {!properties.length ? <DashboardEmptyBlock title="No properties found" text="The connected Google account does not have Search Console properties available." /> : null}
+              </div>
+            </article>
+          ) : null}
 
           {geoTab === 'performance' ? (
             <>

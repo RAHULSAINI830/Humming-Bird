@@ -92,6 +92,7 @@ function App() {
     };
     const geoMessages = {
       connected: 'Google Search Console connected.',
+      'connected-select-property': 'Google connected. Select the Search Console property you want to track.',
       'connected-no-properties': reasonMessages[reason] || 'Google connected, but no Search Console properties were found.',
       'connected-no-data': reasonMessages[reason] || 'Google connected, but Search Console returned no analytics rows for the selected property/date range yet.',
       'connected-sync-failed': reasonMessages[reason] || 'Google connected, but the first Search Console sync failed. Try Refresh Search Console.',
