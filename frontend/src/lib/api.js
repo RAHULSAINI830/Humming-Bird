@@ -10,7 +10,10 @@ export async function api(path, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const error = new Error(data.error || 'Something went wrong.');
+    const message = data.detail
+      ? `${data.error || 'Something went wrong.'} ${data.detail}`
+      : (data.error || 'Something went wrong.');
+    const error = new Error(message);
     error.data = data;
     error.status = response.status;
 
