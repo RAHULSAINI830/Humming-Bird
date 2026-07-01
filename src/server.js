@@ -1426,11 +1426,25 @@ function handleGeo(req, res) {
 }
 
 function handleGoogleConnect(req, res) {
-  const context = requireSelectedCompany(req, res);
+  const session = getSession(req);
 
-  if (!context) {
-    return null;
+  if (!session) {
+    return redirect(res, `${requestBaseUrl(req)}/app/?auth=required`);
   }
+
+  if (!session.selectedCompanyId) {
+    return redirect(res, `${requestBaseUrl(req)}/app/?auth=no-company`);
+  }
+
+  const access = session.isDeveloper
+    ? getDeveloperCompanyAccess(session.selectedCompanyId)
+    : getUserCompanyAccess(session.userId, session.selectedCompanyId);
+
+  if (!access) {
+    return redirect(res, `${requestBaseUrl(req)}/app/?auth=access-denied`);
+  }
+
+  const context = { session, access };
 
   if (!GEO_MANAGEMENT_ROLES.includes(context.access.role_name)) {
     return sendJson(res, { error: 'Access denied' }, 403);

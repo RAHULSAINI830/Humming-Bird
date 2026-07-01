@@ -55,6 +55,24 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const geo = params.get('geo');
     const reason = params.get('reason');
+    const auth = params.get('auth');
+
+    if (auth) {
+      const authMessages = {
+        required: 'Please login again before connecting Google Search Console.',
+        'no-company': 'Please select or create a workspace before connecting Google Search Console.',
+        'access-denied': 'Your account does not have access to this workspace anymore.'
+      };
+
+      setNotice(authMessages[auth] || 'Please login again to continue.');
+
+      if (auth === 'required') {
+        setSession(null);
+        setStatus('guest');
+      }
+
+      return;
+    }
 
     if (!geo) return;
 
