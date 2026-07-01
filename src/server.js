@@ -2604,6 +2604,23 @@ function handleDeveloperAdmin(req, res) {
   });
 }
 
+function handleDeveloperAiDiagnostics(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  return sendJson(res, AIService.getProviderDiagnostics ? AIService.getProviderDiagnostics() : {
+    provider: 'Hummingbird AI',
+    error: 'Diagnostics unavailable'
+  });
+}
+
 async function handleDeveloperDeleteCompany(req, res) {
   const session = requireSession(req, res);
 
@@ -2824,6 +2841,10 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/developer') {
       return handleDeveloperAdmin(req, res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/developer/ai-diagnostics') {
+      return handleDeveloperAiDiagnostics(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/developer/companies/delete') {

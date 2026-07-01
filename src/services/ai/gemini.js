@@ -74,6 +74,20 @@ function logAiProviderConfigOnce() {
   );
 }
 
+function getProviderDiagnostics() {
+  return {
+    provider: 'Hummingbird AI',
+    model: geminiModel(),
+    hasApiKey: Boolean(process.env.GEMINI_API_KEY),
+    keyEnding: geminiKeyEnding(),
+    timeoutMs: geminiTimeout(),
+    retryAttempts: geminiRetryAttempts(),
+    vercelCommit: process.env.VERCEL_GIT_COMMIT_SHA || '',
+    vercelEnv: process.env.VERCEL_ENV || '',
+    nodeEnv: process.env.NODE_ENV || ''
+  };
+}
+
 function retryDelayMs(response, attempt) {
   const retryAfter = response.headers.get('retry-after');
   const retryAfterSeconds = Number(retryAfter);
@@ -1065,5 +1079,6 @@ module.exports = {
   generateCompanyPrompts,
   discoverCompetitors,
   analyzePromptVisibility,
-  generateAeoRecommendations
+  generateAeoRecommendations,
+  getProviderDiagnostics
 };

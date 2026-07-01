@@ -20,10 +20,15 @@ async function generateAeoRecommendations(context) {
   return GeminiProvider.generateAeoRecommendations(context);
 }
 
+function getProviderDiagnostics() {
+  return GeminiProvider.getProviderDiagnostics();
+}
+
 module.exports = {
   generateBusinessAnalysis,
   generateCompanyPrompts,
   discoverCompetitors,
   analyzePromptVisibility,
-  generateAeoRecommendations
+  generateAeoRecommendations,
+  getProviderDiagnostics
 };
