@@ -4,9 +4,24 @@ const { Client } = require('pg');
 const encoder = new TextEncoder();
 
 let clientPromise = null;
+let loggedDatabaseHost = false;
+
+function databaseHostForLog() {
+  try {
+    const parsed = new URL(process.env.DATABASE_URL || '');
+    return `${parsed.hostname}:${parsed.port || '5432'}`;
+  } catch {
+    return 'invalid DATABASE_URL';
+  }
+}
 
 async function getClient() {
   if (!clientPromise) {
+    if (!loggedDatabaseHost) {
+      loggedDatabaseHost = true;
+      console.log(`Hummingbird Postgres connecting to ${databaseHostForLog()}`);
+    }
+
     const client = new Client({
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/i.test(process.env.DATABASE_URL)
