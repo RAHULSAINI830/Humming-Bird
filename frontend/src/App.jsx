@@ -93,12 +93,27 @@ function App() {
     const geoMessages = {
       connected: 'Google Search Console connected.',
       'connected-no-properties': reasonMessages[reason] || 'Google connected, but no Search Console properties were found.',
+      'connected-no-data': reasonMessages[reason] || 'Google connected, but Search Console returned no analytics rows for the selected property/date range yet.',
+      'connected-sync-failed': reasonMessages[reason] || 'Google connected, but the first Search Console sync failed. Try Refresh Search Console.',
       failed: reasonMessages[reason] || 'Google Search Console connection failed.',
       'not-configured': 'Google OAuth is not configured in Vercel.'
     };
 
     setNotice(geoMessages[geo] || 'Google Search Console setup status updated.');
     setActiveView('geo');
+  }, []);
+
+  useEffect(() => {
+    function syncViewFromHash() {
+      const hashView = window.location.hash.replace('#', '').trim();
+      if (!allowedViewKeys.has(hashView)) return;
+      setActiveViewState(hashView);
+      window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, hashView);
+    }
+
+    syncViewFromHash();
+    window.addEventListener('hashchange', syncViewFromHash);
+    return () => window.removeEventListener('hashchange', syncViewFromHash);
   }, []);
 
   useEffect(() => {

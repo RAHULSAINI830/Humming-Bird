@@ -1602,6 +1602,21 @@ async function handleGoogleCallback(req, res, url) {
       return redirect(res, appReturnUrl(req, state, `geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`, 'geo'));
     }
 
+    try {
+      const syncResult = await syncGeoForCompany(Number(state.companyId));
+
+      if (syncResult?.skipped) {
+        return redirect(res, appReturnUrl(req, state, `geo=connected-no-data&reason=${syncResult.reason || 'no-data'}`, 'geo'));
+      }
+
+      if (!syncResult.countryRows && !syncResult.queryRows && !syncResult.dateRows) {
+        return redirect(res, appReturnUrl(req, state, 'geo=connected-no-data&reason=no-search-analytics-rows', 'geo'));
+      }
+    } catch (syncError) {
+      console.warn(`Google Search Console auto-sync failed: ${syncError.message}`);
+      return redirect(res, appReturnUrl(req, state, `geo=connected-sync-failed&reason=${safeGoogleErrorCode(syncError)}`, 'geo'));
+    }
+
     return redirect(res, appReturnUrl(req, state, 'geo=connected', 'geo'));
   } catch (error) {
     logGoogleCallbackIssue(req, error);

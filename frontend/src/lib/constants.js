@@ -27,8 +27,11 @@ export function readInitialActiveView() {
   if (typeof window === 'undefined') return DEFAULT_ACTIVE_VIEW;
 
   const hashView = window.location.hash.replace('#', '').trim();
+  const params = new URLSearchParams(window.location.search);
+  const geoStatus = params.get('geo');
   const storedView = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
 
+  if (geoStatus) return 'geo';
   if (allowedViewKeys.has(hashView)) return hashView;
   if (allowedViewKeys.has(storedView)) return storedView;
   return DEFAULT_ACTIVE_VIEW;
