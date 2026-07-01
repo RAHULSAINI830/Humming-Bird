@@ -80,7 +80,7 @@ function App() {
 
     const reasonMessages = {
       'api-not-enabled': 'Google Search Console API is not enabled for this Google Cloud project.',
-      'invalid-client': 'Google OAuth Client ID or Client Secret is missing or incorrect in Vercel.',
+      'invalid-client': 'Google OAuth Client ID or Client Secret is incorrect in Vercel, or it does not match the Web application OAuth client in Google Cloud.',
       'invalid-grant': 'Google rejected the OAuth code. Restart the connection from GEO Visibility and make sure local GOOGLE_REDIRECT_URI matches localhost.',
       'invalid-request': 'Google OAuth request is invalid. Check the redirect URI and OAuth client setup.',
       'unauthorized-client': 'This OAuth client is not allowed to use this flow. Check Google OAuth client type and redirect URI.',

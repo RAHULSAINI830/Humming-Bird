@@ -982,9 +982,12 @@ function safeGoogleErrorCode(error) {
 }
 
 function logGoogleCallbackIssue(req, error) {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '');
   const safeDetails = {
     host: req.headers.host,
     redirectUri: googleRedirectUri(req),
+    googleClientIdEnding: clientId ? clientId.slice(-18) : 'missing',
+    hasGoogleClientSecret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
     statusCode: error?.statusCode || '',
     googleError: error?.googleError || '',
     reason: safeGoogleErrorCode(error)
