@@ -146,12 +146,20 @@ button {
   backdrop-filter: blur(26px);
 }
 
+.loading-visual-shell {
+  position: relative;
+  width: min(360px, 100%);
+  min-height: 230px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 10px;
+}
+
 .loading-orbit {
   position: relative;
   display: grid;
   width: 190px;
   height: 190px;
-  margin-bottom: 28px;
   place-items: center;
 }
 
@@ -185,6 +193,61 @@ button {
   border-radius: 32px;
   background: #ffffff;
   box-shadow: 0 24px 56px rgba(255, 157, 0, 0.18);
+}
+
+.loading-signal-card {
+  position: absolute;
+  display: grid;
+  gap: 2px;
+  min-width: 92px;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 232, 240, 0.92);
+  border-radius: 18px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 54px rgba(8, 17, 39, 0.1);
+  animation: signalFloat 3.6s ease-in-out infinite;
+}
+
+.loading-signal-card b {
+  color: var(--primary);
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}
+
+.loading-signal-card span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.loading-signal-card::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 7px rgba(255, 157, 0, 0.1);
+}
+
+.loading-signal-card.one {
+  top: 18px;
+  left: 0;
+}
+
+.loading-signal-card.two {
+  right: 0;
+  top: 76px;
+  animation-delay: 0.25s;
+}
+
+.loading-signal-card.three {
+  left: 28px;
+  bottom: 10px;
+  animation-delay: 0.5s;
 }
 
 .loading-copy h1 {
@@ -246,6 +309,11 @@ button {
 
 @keyframes loadingFloat {
   50% { transform: translate3d(24px, -18px, 0) rotate(16deg); }
+}
+
+@keyframes signalFloat {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -8px, 0); }
 }
 
 @keyframes loadingSweep {
@@ -4419,6 +4487,12 @@ td a {
   transition: width 0.35s ease;
 }
 
+.setup-progress-track.is-loading span {
+  background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+  background-size: 220% 100%;
+  animation: loadingSweep 1.5s ease-in-out infinite;
+}
+
 .setup-gate-hero > small {
   margin-top: 10px;
   color: var(--muted);
@@ -4441,6 +4515,72 @@ td a {
 .setup-generate-button:disabled {
   cursor: not-allowed;
   opacity: 0.78;
+}
+
+.setup-live-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(255, 157, 0, 0.26);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 8% 20%, rgba(255, 157, 0, 0.18), transparent 40%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 237, 0.9));
+  box-shadow: 0 18px 48px rgba(255, 157, 0, 0.12);
+  animation: fadeSlideUp 0.28s ease both;
+}
+
+.setup-live-status strong {
+  display: block;
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 880;
+}
+
+.setup-live-status p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  font-weight: 720;
+}
+
+.setup-live-orb {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+}
+
+.setup-live-orb span {
+  width: 28px;
+  height: 28px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 12px 32px rgba(255, 157, 0, 0.28);
+}
+
+.setup-live-orb i {
+  position: absolute;
+  border: 1px solid rgba(255, 157, 0, 0.42);
+  border-radius: 999px;
+  animation: setupOrbit 2.8s linear infinite;
+}
+
+.setup-live-orb i:nth-of-type(1) {
+  width: 50px;
+  height: 24px;
+}
+
+.setup-live-orb i:nth-of-type(2) {
+  width: 44px;
+  height: 44px;
+  animation-duration: 4s;
+  animation-direction: reverse;
 }
 
 .setup-pipeline-card {
@@ -5752,9 +5892,9 @@ td a {
 
 .tab-loading-card {
   display: grid;
-  grid-template-columns: 118px minmax(0, 1fr);
+  grid-template-columns: 132px minmax(0, 1fr);
   align-items: center;
-  gap: 24px;
+  gap: 28px;
   padding: clamp(26px, 4vw, 42px);
   border: 1px solid rgba(226, 232, 240, 0.96);
   border-radius: 30px;
@@ -5762,6 +5902,7 @@ td a {
     radial-gradient(circle at 92% 20%, rgba(255, 157, 0, 0.16), transparent 32%),
     linear-gradient(135deg, #ffffff, #f9fbff);
   box-shadow: 0 28px 70px rgba(8, 17, 39, 0.08);
+  overflow: hidden;
 }
 
 .tab-loading-card h1 {
@@ -5781,8 +5922,8 @@ td a {
 
 .tab-loading-orbit {
   position: relative;
-  width: 96px;
-  height: 96px;
+  width: 118px;
+  height: 118px;
   display: grid;
   place-items: center;
 }
@@ -5813,6 +5954,23 @@ td a {
 .tab-loading-orbit i:nth-of-type(1) { width: 92px; height: 38px; }
 .tab-loading-orbit i:nth-of-type(2) { width: 122px; height: 54px; animation-duration: 5.8s; }
 
+.tab-loading-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.tab-loading-steps span {
+  padding: 8px 10px;
+  border: 1px solid #e6edf6;
+  border-radius: 999px;
+  color: var(--primary);
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .skeleton-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5820,13 +5978,43 @@ td a {
 }
 
 .skeleton-grid span {
+  position: relative;
+  overflow: hidden;
   height: 150px;
   border-radius: 24px;
   border: 1px solid rgba(226, 232, 240, 0.88);
-  background: linear-gradient(90deg, #fff 0%, #f3f7fb 42%, #fff 78%);
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.72) 0%, rgba(243,247,251,0.9) 42%, rgba(255,255,255,0.72) 78%),
+    #ffffff;
   background-size: 240% 100%;
   box-shadow: 0 18px 46px rgba(8, 17, 39, 0.05);
   animation: skeletonPulse 1.45s ease-in-out infinite;
+}
+
+.skeleton-grid span::before,
+.skeleton-grid span::after,
+.skeleton-grid span b {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.86);
+}
+
+.skeleton-grid span::before {
+  top: 22px;
+  width: 36%;
+}
+
+.skeleton-grid span::after {
+  top: 54px;
+}
+
+.skeleton-grid span b {
+  top: 84px;
+  right: 42%;
 }
 
 .skeleton-grid span:nth-child(2) { animation-delay: 0.12s; }

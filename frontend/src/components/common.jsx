@@ -14,11 +14,25 @@ export function LoadingScreen() {
   return (
     <main className="loading-screen">
       <section className="loading-stage">
-        <div className="loading-orbit" aria-hidden="true">
-          <span className="loading-core"><BrandLogo centered /></span>
-          <i />
-          <i />
-          <i />
+        <div className="loading-visual-shell" aria-hidden="true">
+          <div className="loading-orbit">
+            <span className="loading-core"><BrandLogo centered /></span>
+            <i />
+            <i />
+            <i />
+          </div>
+          <div className="loading-signal-card one">
+            <b>AI</b>
+            <span>Analyzing</span>
+          </div>
+          <div className="loading-signal-card two">
+            <b>GEO</b>
+            <span>Syncing</span>
+          </div>
+          <div className="loading-signal-card three">
+            <b>AEO</b>
+            <span>Scoring</span>
+          </div>
         </div>
         <div className="loading-copy">
           <p className="eyebrow">Hummingbird AI</p>
@@ -104,12 +118,25 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               </div>
             </div>
 
-            <div className="setup-progress-track">
+            <div className={`setup-progress-track ${loading ? 'is-loading' : ''}`}>
               <span style={{ width: `${loading ? Math.max(percent, 18) : percent}%` }} />
             </div>
             <small>{loading ? 'Generating with Hummingbird AI… this can take a little while.' : `${percent}% ready`}</small>
 
             {error ? <div className="notice">{error}</div> : null}
+            {loading ? (
+              <div className="setup-live-status">
+                <div className="setup-live-orb" aria-hidden="true">
+                  <span />
+                  <i />
+                  <i />
+                </div>
+                <div>
+                  <strong>{loadingLabel(loading)}</strong>
+                  <p>Hummingbird AI is reading saved company data, checking signals, and writing clean results back to your database.</p>
+                </div>
+              </div>
+            ) : null}
 
             {canGenerate ? (
               <div className="setup-action-stack">
@@ -506,15 +533,32 @@ export function TabLoading({ title = 'Loading workspace data', text = 'Hummingbi
           <h1>{title}</h1>
           <p>{text}</p>
           <div className="loading-bar advanced"><span /></div>
+          <div className="tab-loading-steps">
+            <span>Session verified</span>
+            <span>Workspace selected</span>
+            <span>Signals loading</span>
+          </div>
         </div>
       </article>
       <div className="skeleton-grid">
-        <span />
-        <span />
-        <span />
+        <span><b /></span>
+        <span><b /></span>
+        <span><b /></span>
       </div>
     </section>
   );
+}
+
+function loadingLabel(action) {
+  const labels = {
+    'generate-analysis': 'Generating business intelligence',
+    'generate-competitors': 'Discovering relevant competitors',
+    'generate-prompts': 'Building buyer-intent prompts',
+    'run-checks': 'Running visibility checks',
+    generate: 'Preparing workspace intelligence'
+  };
+
+  return labels[action] || 'Hummingbird AI is working';
 }
 
 export function TablePage({ title, subtitle, children }) {
