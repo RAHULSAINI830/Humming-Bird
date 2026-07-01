@@ -25,6 +25,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   const summary = data?.summary || {};
   const kpis = data?.kpis || {};
   const comparison = data?.comparison || {};
+  const diagnostics = data?.diagnostics || {};
   const canManage = Boolean(data?.canManage);
   const sortedCountries = [...countries].sort((a, b) => Number(b.impressions || 0) - Number(a.impressions || 0));
   const activeCountry = sortedCountries.find((country) => normalizedCountryCode(country.country) === selectedCountry) || sortedCountries[0] || null;
@@ -143,6 +144,14 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
               <p className="eyebrow">Connected account</p>
               <h2>{data.connection?.google_email || 'Google account connected'}</h2>
               <p>{summary.lastSyncedAt ? `Last refreshed on ${summary.lastSyncedAt}` : 'No Search Console refresh has been saved yet.'}</p>
+              {data?.connected ? (
+                <div className="geo-sync-diagnostics">
+                  <span>{diagnostics.propertyCount || 0} properties</span>
+                  <span>{diagnostics.savedRows?.countries || 0} country rows</span>
+                  <span>{diagnostics.savedRows?.queries || 0} query rows</span>
+                  <span>{diagnostics.savedRows?.dates || 0} date rows</span>
+                </div>
+              ) : null}
             </div>
             <div className="geo-toolbar-actions">
               <label>

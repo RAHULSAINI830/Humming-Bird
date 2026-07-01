@@ -1264,6 +1264,15 @@ async function searchConsoleQuery(accessToken, propertyUrl, body) {
   return Array.isArray(data.rows) ? data.rows : [];
 }
 
+async function optionalSearchConsoleQuery(accessToken, propertyUrl, body, fallbackLabel) {
+  try {
+    return await searchConsoleQuery(accessToken, propertyUrl, body);
+  } catch (error) {
+    console.warn(`Optional Search Console query failed (${fallbackLabel}): ${error.message}`);
+    return [];
+  }
+}
+
 function dimensionRow(type, row) {
   const keys = row.keys || [];
   return {
@@ -1292,8 +1301,7 @@ function aggregateRows(rows) {
 }
 
 function latestCreatedRows(rows) {
-  const firstCreated = rows[0]?.created_at;
-  return rows.filter((row) => !firstCreated || row.created_at === firstCreated);
+  return rows;
 }
 
 function changeValue(current, previous) {
@@ -1473,6 +1481,22 @@ function geoDashboardPayload(companyId) {
       position: totals.position,
       lastSyncedAt: countryRows[0]?.created_at || queryRows[0]?.created_at || null,
       dateRange: countryRows[0] ? { startDate: countryRows[0].start_date, endDate: countryRows[0].end_date } : null
+    },
+    diagnostics: {
+      connected: isConnected,
+      propertyCount: properties.length,
+      selectedPropertyUrl: propertyUrl,
+      savedRows: {
+        countries: countryRows.length,
+        queries: queryRows.length,
+        dates: dateRows.length,
+        pages: pageRows.length,
+        devices: deviceRows.length,
+        searchAppearance: searchAppearanceRows.length,
+        previousQueries: previousQueryRows.length,
+        previousPages: previousPageRows.length,
+        previousDates: previousDateRows.length
+      }
     },
     kpis: {
       totalClicks: totals.clicks,
@@ -1731,47 +1755,47 @@ async function syncGeoForCompany(companyId) {
       ...commonBody,
       dimensions: ['country']
     }),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
       dimensions: ['query', 'country', 'page']
-    }),
+    }, 'query-country-page'),
     searchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
       dimensions: ['date'],
       rowLimit: 5000
     }),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
       dimensions: ['page']
-    }),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    }, 'page'),
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
       dimensions: ['device'],
       rowLimit: 5000
-    }),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    }, 'device'),
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
       dimensions: ['searchAppearance'],
       rowLimit: 5000
-    }).catch(() => []),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    }, 'searchAppearance'),
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       startDate: previousRange.startDate,
       endDate: previousRange.endDate,
       rowLimit: 25000,
       dimensions: ['query']
-    }),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    }, 'previous-query'),
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       startDate: previousRange.startDate,
       endDate: previousRange.endDate,
       rowLimit: 25000,
       dimensions: ['page']
-    }),
-    searchConsoleQuery(accessToken, selected.site_url, {
+    }, 'previous-page'),
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
       startDate: previousRange.startDate,
       endDate: previousRange.endDate,
       rowLimit: 5000,
       dimensions: ['date']
-    })
+    }, 'previous-date')
   ]);
 
   clearGeoSnapshots(companyId, selected.site_url);
@@ -1826,7 +1850,15 @@ async function syncGeoForCompany(companyId) {
     propertyUrl: selected.site_url,
     countryRows: countryRows.length,
     queryRows: queryRows.length,
-    dateRows: dateRows.length
+    dateRows: dateRows.length,
+    pageRows: pageRows.length,
+    deviceRows: deviceRows.length,
+    searchAppearanceRows: searchAppearanceRows.length,
+    previousQueryRows: previousQueryRows.length,
+    previousPageRows: previousPageRows.length,
+    previousDateRows: previousDateRows.length,
+    startDate,
+    endDate
   };
 }
 
@@ -1846,11 +1878,18 @@ async function handleSyncGeo(req, res) {
   }
 
   try {
-    await syncGeoForCompany(context.access.company_id);
+    const syncResult = await syncGeoForCompany(context.access.company_id);
 
-    return sendJson(res, geoDashboardPayload(context.access.company_id));
+    return sendJson(res, {
+      ...geoDashboardPayload(context.access.company_id),
+      syncResult
+    });
   } catch (error) {
-    return sendJson(res, { error: error.message || 'Search Console sync failed.' }, 500);
+    return sendJson(res, {
+      error: error.message || 'Search Console sync failed.',
+      detail: error.googleDescription || error.googleError || '',
+      code: safeGoogleErrorCode(error)
+    }, 500);
   }
 }
 
