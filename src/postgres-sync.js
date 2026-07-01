@@ -45,7 +45,12 @@ function rewriteSql(sql, { returning = false } = {}) {
 
   next = next.replace(/\bAUTOINCREMENT\b/gi, '');
   next = next.replace(/\bINTEGER\s+PRIMARY\s+KEY\s*(?=,|\))/gi, 'SERIAL PRIMARY KEY');
+  next = next.replace(/\bTEXT\s+NOT\s+NULL\s+DEFAULT\s+CURRENT_TIMESTAMP\b/gi, 'TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP');
+  next = next.replace(/\bTEXT\s+DEFAULT\s+CURRENT_TIMESTAMP\b/gi, 'TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP');
   next = next.replace(/\bDATETIME\b/gi, 'TIMESTAMP');
+  next = next.replace(/datetime\(([^)]+)\)/gi, '$1');
+  next = next.replace(/group_concat\(DISTINCT\s+([^),]+)\)/gi, "string_agg(DISTINCT $1, ',')");
+  next = next.replace(/group_concat\(([^),]+)\)/gi, "string_agg($1, ',')");
   next = next.replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, 'INSERT INTO');
   next = rewritePlaceholders(next);
 
