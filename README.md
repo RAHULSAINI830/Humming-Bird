@@ -145,19 +145,4 @@ For the current prototype, `data/rango.sqlite` is intentionally committed as a b
 
 On Vercel, the runtime database is copied from this seed into `/tmp/rango.sqlite` when the serverless function starts and no runtime database exists yet.
 
-### Optional production owner seed
-
-Because Vercel `/tmp` storage is ephemeral, set these environment variables if you need one client owner account/workspace to be recreated automatically after a cold start or redeploy:
-
-```bash
-HUMMINGBIRD_SEED_OWNER_EMAIL=owner@example.com
-HUMMINGBIRD_SEED_OWNER_PASSWORD=use-a-secure-password
-HUMMINGBIRD_SEED_OWNER_NAME=Owner Name
-HUMMINGBIRD_SEED_COMPANY_NAME=Company Name
-HUMMINGBIRD_SEED_COMPANY_URL=https://example.com
-HUMMINGBIRD_SEED_COMPANY_LOGO=https://example.com/logo.png
-```
-
-This is a temporary prototype safety net, not a replacement for a real hosted production database.
-
 Important: Vercel `/tmp` storage is ephemeral. New production signups or generated data can disappear after cold starts/redeploys. Move to a hosted database such as Neon, Supabase, Turso, or Postgres before production launch.
