@@ -120,7 +120,14 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
             <p>For accurate GEO data, Hummingbird uses Google Search Console. The user’s Google account must have access to the website property.</p>
           </div>
           {canManage ? (
-            <button type="button" className="primary-button" onClick={() => { window.location.href = '/api/google/connect'; }}>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => {
+                window.localStorage.setItem('hummingbird.activeView', 'geo');
+                window.location.href = '/api/google/connect';
+              }}
+            >
               Connect Google Search Console
             </button>
           ) : (

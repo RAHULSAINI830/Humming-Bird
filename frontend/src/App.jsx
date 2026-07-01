@@ -102,6 +102,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!notice) return undefined;
+
+    const timer = window.setTimeout(() => setNotice(''), noticeType(notice) === 'error' ? 9000 : 5200);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     function handleAuthExpired() {
       setSession(null);
       setStatus('guest');
@@ -126,14 +133,20 @@ function App() {
     function loadView(view, path, setter) {
       if (loadedViews[view] || loadingViews[view]) return;
 
-      setLoadingViews((current) => ({ ...current, [view]: true }));
+      const loadingTimer = window.setTimeout(() => {
+        setLoadingViews((current) => ({ ...current, [view]: true }));
+      }, 220);
+
       api(path)
         .then((data) => {
           setter(data);
           setLoadedViews((current) => ({ ...current, [view]: true }));
         })
         .catch((error) => setNotice(error.message))
-        .finally(() => setLoadingViews((current) => ({ ...current, [view]: false })));
+        .finally(() => {
+          window.clearTimeout(loadingTimer);
+          setLoadingViews((current) => ({ ...current, [view]: false }));
+        });
     }
 
     if (activeView === 'dashboard') {
@@ -329,7 +342,13 @@ function App() {
       </aside>
 
       <section className="main-area">
-        {notice ? <div className="notice">{notice}</div> : null}
+        {notice ? (
+          <div className={`app-toast ${noticeType(notice)}`} role="status">
+            <span>{noticeType(notice) === 'success' ? '✓' : noticeType(notice) === 'info' ? 'i' : '!'}</span>
+            <p>{notice}</p>
+            <button type="button" aria-label="Dismiss notification" onClick={() => setNotice('')}>×</button>
+          </div>
+        ) : null}
 
         {loadingViews[activeView] && !loadedViews[activeView] ? (
           <TabLoading title={`Loading ${labelForView(activeView)}`} />
@@ -351,6 +370,35 @@ function App() {
       </section>
     </main>
   );
+}
+
+function noticeType(message = '') {
+  const normalized = String(message).toLowerCase();
+
+  if (
+    normalized.includes('connected') ||
+    normalized.includes('refreshed') ||
+    normalized.includes('saved') ||
+    normalized.includes('completed') ||
+    normalized.includes('deleted') ||
+    normalized.includes('removed')
+  ) {
+    return 'success';
+  }
+
+  if (
+    normalized.includes('failed') ||
+    normalized.includes('incorrect') ||
+    normalized.includes('denied') ||
+    normalized.includes('expired') ||
+    normalized.includes('invalid') ||
+    normalized.includes('error') ||
+    normalized.includes('not configured')
+  ) {
+    return 'error';
+  }
+
+  return 'info';
 }
 
 export default App;

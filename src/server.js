@@ -973,13 +973,13 @@ function safeReturnBaseUrl(value) {
   }
 }
 
-function appRedirectPath(params = '') {
-  return `/app/${params ? `?${params}` : ''}`;
+function appRedirectPath(params = '', hash = '') {
+  return `/app/${params ? `?${params}` : ''}${hash ? `#${hash.replace(/^#/, '')}` : ''}`;
 }
 
-function appReturnUrl(req, state, params = '') {
+function appReturnUrl(req, state, params = '', hash = '') {
   const returnBase = safeReturnBaseUrl(state?.returnBaseUrl) || requestBaseUrl(req);
-  return `${returnBase}${appRedirectPath(params)}`;
+  return `${returnBase}${appRedirectPath(params, hash)}`;
 }
 
 function redirect(res, location) {
@@ -1553,11 +1553,11 @@ async function handleGoogleCallback(req, res, url) {
   const state = decodeOAuthState(url.searchParams.get('state'));
 
   if (!code || !state) {
-    return redirect(res, '/app/?geo=failed');
+    return redirect(res, '/app/?geo=failed#geo');
   }
 
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return redirect(res, appReturnUrl(req, state, 'geo=not-configured'));
+    return redirect(res, appReturnUrl(req, state, 'geo=not-configured', 'geo'));
   }
 
   try {
@@ -1599,13 +1599,13 @@ async function handleGoogleCallback(req, res, url) {
       }
     } catch (propertiesError) {
       console.warn(`Google Search Console properties could not be fetched: ${propertiesError.message}`);
-      return redirect(res, appReturnUrl(req, state, `geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`));
+      return redirect(res, appReturnUrl(req, state, `geo=connected-no-properties&reason=${safeGoogleErrorCode(propertiesError)}`, 'geo'));
     }
 
-    return redirect(res, appReturnUrl(req, state, 'geo=connected'));
+    return redirect(res, appReturnUrl(req, state, 'geo=connected', 'geo'));
   } catch (error) {
     logGoogleCallbackIssue(req, error);
-    return redirect(res, appReturnUrl(req, state, `geo=failed&reason=${safeGoogleErrorCode(error)}`));
+    return redirect(res, appReturnUrl(req, state, `geo=failed&reason=${safeGoogleErrorCode(error)}`, 'geo'));
   }
 }
 
