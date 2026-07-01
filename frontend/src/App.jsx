@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './lib/api';
 import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, geoSubTabs, navItems, readInitialActiveView } from './lib/constants';
-import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, WorkspaceCard } from './components/common';
+import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, TabLoading, WorkspaceCard, labelForView } from './components/common';
 import Dashboard from './tabs/Dashboard';
 import BusinessAnalysis from './tabs/BusinessAnalysis';
 import AeoRecommendations from './tabs/AeoRecommendations';
@@ -31,6 +31,8 @@ function App() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [notice, setNotice] = useState('');
+  const [loadingViews, setLoadingViews] = useState({});
+  const [loadedViews, setLoadedViews] = useState({});
 
   function setActiveView(view) {
     const nextView = allowedViewKeys.has(view) ? view : DEFAULT_ACTIVE_VIEW;
@@ -109,6 +111,8 @@ function App() {
       setSetupStatus(null);
       setSetupLoading(false);
       setSetupError('');
+      setLoadedViews({});
+      setLoadingViews({});
       setNotice('Your session expired. Please log in again.');
     }
 
@@ -119,42 +123,55 @@ function App() {
   useEffect(() => {
     if (status !== 'ready') return;
 
+    function loadView(view, path, setter) {
+      if (loadedViews[view] || loadingViews[view]) return;
+
+      setLoadingViews((current) => ({ ...current, [view]: true }));
+      api(path)
+        .then((data) => {
+          setter(data);
+          setLoadedViews((current) => ({ ...current, [view]: true }));
+        })
+        .catch((error) => setNotice(error.message))
+        .finally(() => setLoadingViews((current) => ({ ...current, [view]: false })));
+    }
+
     if (activeView === 'dashboard') {
-      api('/api/dashboard').then(setDashboard).catch((error) => setNotice(error.message));
+      loadView('dashboard', '/api/dashboard', setDashboard);
     }
 
     if (activeView === 'business-analysis') {
-      api('/api/business-analysis').then(setBusinessAnalysis).catch((error) => setNotice(error.message));
+      loadView('business-analysis', '/api/business-analysis', setBusinessAnalysis);
     }
 
     if (activeView === 'aeo-recommendations') {
-      api('/api/aeo-recommendations').then(setAeoRecommendations).catch((error) => setNotice(error.message));
+      loadView('aeo-recommendations', '/api/aeo-recommendations', setAeoRecommendations);
     }
 
     if (activeView === 'prompts') {
-      api('/api/prompts').then(setPromptsData).catch((error) => setNotice(error.message));
+      loadView('prompts', '/api/prompts', setPromptsData);
     }
 
     if (activeView === 'competitors') {
-      api('/api/competitors').then(setCompetitorsData).catch((error) => setNotice(error.message));
+      loadView('competitors', '/api/competitors', setCompetitorsData);
     }
 
     if (activeView === 'citations') {
-      api('/api/citations').then(setCitationsData).catch((error) => setNotice(error.message));
+      loadView('citations', '/api/citations', setCitationsData);
     }
 
     if (activeView === 'geo') {
-      api('/api/geo').then(setGeoData).catch((error) => setNotice(error.message));
+      loadView('geo', '/api/geo', setGeoData);
     }
 
     if (activeView === 'settings') {
-      api('/api/settings').then(setSettingsData).catch((error) => setNotice(error.message));
+      loadView('settings', '/api/settings', setSettingsData);
     }
 
     if (activeView === 'developer') {
-      api('/api/developer').then(setDeveloperData).catch((error) => setNotice(error.message));
+      loadView('developer', '/api/developer', setDeveloperData);
     }
-  }, [activeView, status, session?.selectedCompanyId]);
+  }, [activeView, status, session?.selectedCompanyId, loadedViews, loadingViews]);
 
   useEffect(() => {
     if (status !== 'ready' || !session?.selectedCompanyId || session.isDeveloper) {
@@ -191,6 +208,8 @@ function App() {
     setCitationsData({ citations: [], summary: null });
     setGeoData(null);
     setSettingsData(null);
+    setLoadedViews({});
+    setLoadingViews({});
     setActiveView('dashboard');
   }
 
@@ -204,6 +223,7 @@ function App() {
       if (result.ready) {
         const dashboardResult = await api('/api/dashboard');
         setDashboard(dashboardResult);
+        setLoadedViews((current) => ({ ...current, dashboard: true }));
         setActiveView('dashboard');
       }
     } catch (error) {
@@ -311,15 +331,23 @@ function App() {
       <section className="main-area">
         {notice ? <div className="notice">{notice}</div> : null}
 
-        {activeView === 'dashboard' ? <Dashboard data={dashboard} session={session} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
-        {activeView === 'business-analysis' ? <BusinessAnalysis data={businessAnalysis} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
-        {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
-        {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-        {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+        {loadingViews[activeView] && !loadedViews[activeView] ? (
+          <TabLoading title={`Loading ${labelForView(activeView)}`} />
+        ) : null}
+
+        {!(loadingViews[activeView] && !loadedViews[activeView]) ? (
+          <div className={loadingViews[activeView] ? 'tab-refreshing' : ''}>
+            {activeView === 'dashboard' ? <Dashboard data={dashboard} session={session} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
+            {activeView === 'business-analysis' ? <BusinessAnalysis data={businessAnalysis} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
+            {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
+            {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+          </div>
+        ) : null}
       </section>
     </main>
   );

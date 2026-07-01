@@ -492,6 +492,31 @@ export function EmptyInline({ title, text }) {
   );
 }
 
+export function TabLoading({ title = 'Loading workspace data', text = 'Hummingbird AI is preparing the latest saved signals from your database.' }) {
+  return (
+    <section className="page-content tab-loading-wrap">
+      <article className="tab-loading-card">
+        <div className="tab-loading-orbit" aria-hidden="true">
+          <span><BrandLogo centered /></span>
+          <i />
+          <i />
+        </div>
+        <div>
+          <p className="eyebrow">Loading</p>
+          <h1>{title}</h1>
+          <p>{text}</p>
+          <div className="loading-bar advanced"><span /></div>
+        </div>
+      </article>
+      <div className="skeleton-grid">
+        <span />
+        <span />
+        <span />
+      </div>
+    </section>
+  );
+}
+
 export function TablePage({ title, subtitle, children }) {
   return (
     <section className="page-content">
