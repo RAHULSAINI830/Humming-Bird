@@ -42,9 +42,48 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-const GEMINI_TIMEOUT = Number(process.env.GEMINI_TIMEOUT || 60000);
-const GEMINI_RETRY_ATTEMPTS = Number(process.env.GEMINI_RETRY_ATTEMPTS || 3);
+let hasLoggedAiProviderConfig = false;
+
+function geminiModel() {
+  return process.env.GEMINI_MODEL || 'gemini-flash-latest';
+}
+
+function geminiTimeout() {
+  const value = Number(process.env.GEMINI_TIMEOUT || 60000);
+  return Number.isFinite(value) && value > 0 ? value : 60000;
+}
+
+function geminiRetryAttempts() {
+  const value = Number(process.env.GEMINI_RETRY_ATTEMPTS || 3);
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 5) : 3;
+}
+
+function geminiKeyEnding() {
+  const key = process.env.GEMINI_API_KEY || '';
+  return key ? key.slice(-6) : 'missing';
+}
+
+function logAiProviderConfigOnce() {
+  if (hasLoggedAiProviderConfig) {
+    return;
+  }
+
+  hasLoggedAiProviderConfig = true;
+  console.log(
+    `Hummingbird AI provider configured: model=${geminiModel()}, keyEnding=${geminiKeyEnding()}`
+  );
+}
+
+function retryDelayMs(response, attempt) {
+  const retryAfter = response.headers.get('retry-after');
+  const retryAfterSeconds = Number(retryAfter);
+
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(retryAfterSeconds * 1000, 10000);
+  }
+
+  return Math.min(1200 * attempt, 5000);
+}
 
 const ANALYSIS_FIELDS = [
   'business_summary',
@@ -727,10 +766,13 @@ function sleep(ms) {
 
 async function callGemini(body, signal) {
   let lastError = null;
+  const attempts = geminiRetryAttempts();
 
-  for (let attempt = 1; attempt <= GEMINI_RETRY_ATTEMPTS; attempt += 1) {
+  logAiProviderConfigOnce();
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel())}:generateContent`,
       {
         method: 'POST',
         headers: {
@@ -760,7 +802,17 @@ async function callGemini(body, signal) {
     }
 
     if (response.status === 429) {
-      throw new Error('AI_RATE_LIMITED');
+      lastError = new Error('AI_RATE_LIMITED');
+
+      if (attempt < attempts) {
+        await sleep(retryDelayMs(response, attempt));
+        continue;
+      }
+
+      console.warn(
+        `Hummingbird AI rate limited: model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+      );
+      throw lastError;
     }
 
     if (/quota|billing|permission|api key not valid/i.test(errorMessage)) {
@@ -770,7 +822,7 @@ async function callGemini(body, signal) {
     if (response.status >= 500) {
       lastError = new Error('AI_SERVER_ERROR');
 
-      if (attempt < GEMINI_RETRY_ATTEMPTS) {
+      if (attempt < attempts) {
         await sleep(1000 * attempt);
         continue;
       }
@@ -791,7 +843,7 @@ async function generateBusinessAnalysis(company) {
 
   const websiteSnapshot = await extractWebsiteSnapshot(company.website_url);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
   try {
     const response = await callGemini({
@@ -841,7 +893,7 @@ async function generateCompanyPrompts(company, analysis) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
   try {
     const response = await callGemini({
@@ -891,7 +943,7 @@ async function discoverCompetitors(company, analysis) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
   try {
     const response = await callGemini({
@@ -932,7 +984,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
   try {
     const response = await callGemini({
@@ -973,7 +1025,7 @@ async function generateAeoRecommendations(context) {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT);
+  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
   try {
     const response = await callGemini({

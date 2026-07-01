@@ -273,6 +273,26 @@ function safeErrorDetail(error) {
   };
 }
 
+function aiErrorResponse(error, fallbackMessage) {
+  const code = String(error?.message || '');
+  const messages = {
+    AI_MISSING_KEY: 'Hummingbird AI is not configured yet. Please add the AI API key in production environment variables and redeploy.',
+    AI_AUTH_FAILED: 'Hummingbird AI authentication failed. Please check the AI API key in production environment variables and redeploy.',
+    AI_RATE_LIMITED: 'Hummingbird AI is temporarily rate-limited. Please wait a minute and retry. If this continues, the AI key quota is exhausted or production is still using the old key.',
+    AI_TIMEOUT: 'Hummingbird AI took too long to respond. Please retry.',
+    AI_INVALID_JSON: 'Hummingbird AI returned an unreadable response. Please retry.',
+    AI_NETWORK_ERROR: 'Hummingbird AI could not be reached. Please retry.',
+    AI_SERVER_ERROR: 'Hummingbird AI service is temporarily unavailable. Please retry.',
+    AI_REQUEST_FAILED: 'Hummingbird AI request failed. Please check the AI key, model, and provider quota.'
+  };
+
+  return {
+    error: messages[code] || fallbackMessage,
+    detail: code && messages[code] ? '' : String(error?.message || '').slice(0, 500),
+    code: error?.code || code
+  };
+}
+
 function notFound(res) {
   return sendJson(res, { error: 'Route not found' }, 404);
 }
@@ -1913,9 +1933,10 @@ async function handleSetupGenerateAnalysis(req, res) {
 
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
-    if (analysisId) failBusinessAnalysis(analysisId, 'AI business analysis failed. Please retry.', 'gemini');
+    const payload = aiErrorResponse(error, 'AI business analysis failed. Please retry.');
+    if (analysisId) failBusinessAnalysis(analysisId, payload.error, 'gemini');
     console.error(error);
-    return sendJson(res, { error: 'AI business analysis failed. Please retry.', ...safeErrorDetail(error) }, 500);
+    return sendJson(res, payload, 500);
   }
 }
 
@@ -1940,7 +1961,7 @@ async function handleSetupGenerateCompetitors(req, res) {
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Competitor discovery failed. Please retry.', ...safeErrorDetail(error) }, 500);
+    return sendJson(res, aiErrorResponse(error, 'Competitor discovery failed. Please retry.'), 500);
   }
 }
 
@@ -1969,7 +1990,7 @@ async function handleSetupGeneratePrompts(req, res) {
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Prompt generation failed. Please retry.', ...safeErrorDetail(error) }, 500);
+    return sendJson(res, aiErrorResponse(error, 'Prompt generation failed. Please retry.'), 500);
   }
 }
 
@@ -1993,7 +2014,7 @@ async function handleSetupRunChecks(req, res) {
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'AI visibility checks failed. Please retry.', ...safeErrorDetail(error) }, 500);
+    return sendJson(res, aiErrorResponse(error, 'AI visibility checks failed. Please retry.'), 500);
   }
 }
 
@@ -2180,12 +2201,14 @@ async function handleGenerateSetup(req, res) {
 
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
+    const payload = aiErrorResponse(error, 'AI setup generation failed. Please retry.');
+
     if (analysisId) {
-      failBusinessAnalysis(analysisId, 'AI setup generation failed. Please retry.', 'gemini');
+      failBusinessAnalysis(analysisId, payload.error, 'gemini');
     }
 
     console.error(error);
-    return sendJson(res, { error: 'AI setup generation failed. Please retry.' }, 500);
+    return sendJson(res, payload, 500);
   }
 }
 
