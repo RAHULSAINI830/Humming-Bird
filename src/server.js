@@ -2827,7 +2827,7 @@ async function router(req, res) {
       return sendJson(res, { error: 'Invalid JSON body' }, 400);
     }
 
-    console.error(error);
+    console.error(`API error on ${req.method} ${url.pathname}:`, error);
     return sendJson(res, { error: 'Internal server error', ...safeErrorDetail(error) }, 500);
   }
 }

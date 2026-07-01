@@ -51,6 +51,8 @@ function rewriteSql(sql, { returning = false } = {}) {
   next = next.replace(/datetime\(([^)]+)\)/gi, '$1');
   next = next.replace(/group_concat\(DISTINCT\s+([^),]+)\)/gi, "string_agg(DISTINCT $1, ',')");
   next = next.replace(/group_concat\(([^),]+)\)/gi, "string_agg($1, ',')");
+  next = next.replace(/\bCOUNT\(([^)]+)\)\s+AS\s+/gi, 'COUNT($1)::int AS ');
+  next = next.replace(/\bMAX\(([^)]+)\)/gi, 'MAX($1)');
   next = next.replace(/\bINSERT\s+OR\s+IGNORE\s+INTO\b/gi, 'INSERT INTO');
   next = rewritePlaceholders(next);
 
