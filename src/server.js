@@ -266,6 +266,13 @@ function sendJson(res, payload, statusCode = 200) {
   res.end(JSON.stringify(payload));
 }
 
+function safeErrorDetail(error) {
+  return {
+    detail: String(error?.message || '').slice(0, 500),
+    code: error?.code || ''
+  };
+}
+
 function notFound(res) {
   return sendJson(res, { error: 'Route not found' }, 404);
 }
@@ -1905,7 +1912,7 @@ async function handleSetupGenerateAnalysis(req, res) {
   } catch (error) {
     if (analysisId) failBusinessAnalysis(analysisId, 'AI business analysis failed. Please retry.', 'gemini');
     console.error(error);
-    return sendJson(res, { error: 'AI business analysis failed. Please retry.' }, 500);
+    return sendJson(res, { error: 'AI business analysis failed. Please retry.', ...safeErrorDetail(error) }, 500);
   }
 }
 
@@ -1930,7 +1937,7 @@ async function handleSetupGenerateCompetitors(req, res) {
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Competitor discovery failed. Please retry.' }, 500);
+    return sendJson(res, { error: 'Competitor discovery failed. Please retry.', ...safeErrorDetail(error) }, 500);
   }
 }
 
@@ -1959,7 +1966,7 @@ async function handleSetupGeneratePrompts(req, res) {
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Prompt generation failed. Please retry.' }, 500);
+    return sendJson(res, { error: 'Prompt generation failed. Please retry.', ...safeErrorDetail(error) }, 500);
   }
 }
 
@@ -1983,7 +1990,7 @@ async function handleSetupRunChecks(req, res) {
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'AI visibility checks failed. Please retry.' }, 500);
+    return sendJson(res, { error: 'AI visibility checks failed. Please retry.', ...safeErrorDetail(error) }, 500);
   }
 }
 
@@ -2821,11 +2828,7 @@ async function router(req, res) {
     }
 
     console.error(error);
-    return sendJson(res, {
-      error: 'Internal server error',
-      detail: String(error?.message || '').slice(0, 500),
-      code: error?.code || ''
-    }, 500);
+    return sendJson(res, { error: 'Internal server error', ...safeErrorDetail(error) }, 500);
   }
 }
 
