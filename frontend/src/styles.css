@@ -93,6 +93,167 @@ button {
     linear-gradient(135deg, #fffdf9 0%, #f8fafc 52%, #fff7ec 100%);
 }
 
+.loading-screen {
+  position: relative;
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  overflow: hidden;
+  padding: clamp(28px, 5vw, 72px);
+  background:
+    radial-gradient(circle at 18% 22%, rgba(255, 157, 0, 0.22), transparent 28%),
+    radial-gradient(circle at 83% 16%, rgba(0, 1, 66, 0.14), transparent 32%),
+    linear-gradient(135deg, #fffdf9 0%, #f8fbff 48%, #fff4e7 100%);
+}
+
+.loading-screen::before,
+.loading-screen::after {
+  content: "";
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border: 1px solid rgba(255, 157, 0, 0.16);
+  border-radius: 42% 58% 63% 37%;
+  pointer-events: none;
+}
+
+.loading-screen::before {
+  top: -160px;
+  right: -120px;
+  animation: loadingFloat 9s ease-in-out infinite;
+}
+
+.loading-screen::after {
+  bottom: -210px;
+  left: -140px;
+  animation: loadingFloat 11s ease-in-out infinite reverse;
+}
+
+.loading-stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  width: min(760px, 100%);
+  padding: clamp(34px, 5vw, 58px);
+  border: 1px solid rgba(222, 231, 243, 0.96);
+  border-radius: 38px;
+  text-align: center;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.78)),
+    radial-gradient(circle at 50% 0%, rgba(255, 157, 0, 0.14), transparent 40%);
+  box-shadow: 0 44px 120px rgba(8, 17, 39, 0.16);
+  backdrop-filter: blur(26px);
+}
+
+.loading-orbit {
+  position: relative;
+  display: grid;
+  width: 190px;
+  height: 190px;
+  margin-bottom: 28px;
+  place-items: center;
+}
+
+.loading-orbit i {
+  position: absolute;
+  inset: 16px;
+  border: 1px solid rgba(255, 157, 0, 0.24);
+  border-radius: 42% 58% 52% 48%;
+  animation: loadingSpin 5.5s linear infinite;
+}
+
+.loading-orbit i:nth-child(3) {
+  inset: 34px;
+  border-color: rgba(0, 1, 66, 0.14);
+  animation-duration: 7.5s;
+  animation-direction: reverse;
+}
+
+.loading-orbit i:nth-child(4) {
+  inset: 52px;
+  border-color: rgba(255, 120, 0, 0.2);
+  animation-duration: 4.5s;
+}
+
+.loading-core {
+  display: grid;
+  width: 118px;
+  height: 118px;
+  place-items: center;
+  border: 1px solid #edf2f8;
+  border-radius: 32px;
+  background: #ffffff;
+  box-shadow: 0 24px 56px rgba(255, 157, 0, 0.18);
+}
+
+.loading-copy h1 {
+  max-width: 680px;
+  margin: 0;
+  color: var(--primary);
+  font-size: clamp(38px, 5vw, 68px);
+  line-height: 0.98;
+  letter-spacing: -0.07em;
+}
+
+.loading-copy p:not(.eyebrow) {
+  max-width: 590px;
+  margin: 18px auto 0;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.7;
+  font-weight: 750;
+}
+
+.loading-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 28px 0 18px;
+}
+
+.loading-steps span {
+  border: 1px solid #e6edf6;
+  border-radius: 999px;
+  padding: 9px 13px;
+  color: var(--primary);
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.loading-bar.advanced {
+  width: min(430px, 100%);
+  height: 10px;
+  border-radius: 999px;
+  background: #eaf0f7;
+  overflow: hidden;
+}
+
+.loading-bar.advanced span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary));
+  background-size: 220% 100%;
+  animation: loadingSweep 1.6s ease-in-out infinite;
+}
+
+@keyframes loadingSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes loadingFloat {
+  50% { transform: translate3d(24px, -18px, 0) rotate(16deg); }
+}
+
+@keyframes loadingSweep {
+  0% { transform: translateX(-88%); background-position: 0% 50%; }
+  55% { transform: translateX(18%); background-position: 100% 50%; }
+  100% { transform: translateX(104%); background-position: 0% 50%; }
+}
+
 .auth-hero {
   max-width: 650px;
 }
@@ -269,6 +430,35 @@ button {
 
 .field input {
   padding: 0 16px;
+}
+
+.field.password-field input {
+  padding-right: 54px;
+}
+
+.input-shell {
+  position: relative;
+  display: block !important;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #64748b;
+  background: transparent;
+  transform: translateY(-50%);
+}
+
+.password-toggle:hover {
+  color: var(--primary);
+  background: #fff4e6;
 }
 
 .field select {

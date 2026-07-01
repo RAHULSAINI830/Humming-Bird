@@ -12,12 +12,25 @@ export function BrandLogo({ centered = false }) {
 
 export function LoadingScreen() {
   return (
-    <main className="auth-page">
-      <section className="loading-card">
-        <BrandLogo centered />
-        <h1>Loading Hummingbird</h1>
-        <p>Connecting the React frontend to the backend API.</p>
-        <div className="loading-bar"><span /></div>
+    <main className="loading-screen">
+      <section className="loading-stage">
+        <div className="loading-orbit" aria-hidden="true">
+          <span className="loading-core"><BrandLogo centered /></span>
+          <i />
+          <i />
+          <i />
+        </div>
+        <div className="loading-copy">
+          <p className="eyebrow">Hummingbird AI</p>
+          <h1>Preparing your visibility workspace</h1>
+          <p>Syncing secure session state, workspace access, and saved intelligence from the backend.</p>
+        </div>
+        <div className="loading-steps" aria-label="Loading progress">
+          <span>Session</span>
+          <span>Workspace</span>
+          <span>Signals</span>
+        </div>
+        <div className="loading-bar advanced"><span /></div>
       </section>
     </main>
   );
@@ -328,10 +341,33 @@ export function FormSection({ title, children }) {
 }
 
 export function Input({ label, type = 'text', value = '', onChange, error, optional = false, className = '' }) {
+  const [visible, setVisible] = useState(false);
+  const isPassword = type === 'password';
+  const actualType = isPassword && visible ? 'text' : type;
+
   return (
-    <label className={`field ${className}`}>
+    <label className={`field ${className} ${isPassword ? 'password-field' : ''}`}>
       <span>{label} {optional ? <small>Optional</small> : <em>Required</em>}</span>
-      <input type={type} value={value || ''} onChange={(event) => onChange(event.target.value)} />
+      <span className="input-shell">
+        <input type={actualType} value={value || ''} onChange={(event) => onChange(event.target.value)} />
+        {isPassword ? (
+          <button type="button" className="password-toggle" onClick={() => setVisible((current) => !current)} aria-label={visible ? 'Hide password' : 'Show password'}>
+            {visible ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M7.4 7.8C5.6 8.8 4.1 10.2 3 12c2.2 3.6 5.2 5.4 9 5.4 1.4 0 2.7-.3 3.9-.8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M10.2 6.7c.6-.1 1.2-.2 1.8-.2 3.8 0 6.8 1.8 9 5.5-.6 1-1.4 1.9-2.2 2.6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3 12s3.3-5.5 9-5.5S21 12 21 12s-3.3 5.5-9 5.5S3 12 3 12Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="2.5" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            )}
+          </button>
+        ) : null}
+      </span>
       {error ? <strong>{error}</strong> : null}
     </label>
   );
