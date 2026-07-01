@@ -912,7 +912,53 @@ function publicBaseUrl(req) {
 }
 
 function googleRedirectUri(req) {
-  return process.env.GOOGLE_REDIRECT_URI || `${publicBaseUrl(req)}/api/google/callback`;
+  const requestCallback = `${requestBaseUrl(req)}/api/google/callback`;
+  const configured = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
+
+  if (!configured) {
+    return requestCallback;
+  }
+
+  try {
+    const configuredUrl = new URL(configured);
+    const requestUrl = new URL(requestCallback);
+
+    if (configuredUrl.host !== requestUrl.host && requestUrl.host === 'app.hamingbird.com') {
+      return requestCallback;
+    }
+
+    return configured;
+  } catch {
+    return requestCallback;
+  }
+}
+
+function googleOAuthDiagnostics(req) {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  const redirectUri = googleRedirectUri(req);
+  const configuredRedirectUri = String(process.env.GOOGLE_REDIRECT_URI || '').trim();
+
+  return {
+    configured: Boolean(clientId && clientSecret),
+    clientIdEnding: clientId ? clientId.slice(-32) : 'missing',
+    clientIdLooksValid: /^[^=\s]+\.apps\.googleusercontent\.com$/.test(clientId),
+    clientIdHasEnvPrefix: clientId.startsWith('GOOGLE_CLIENT_ID='),
+    hasClientSecret: Boolean(clientSecret),
+    clientSecretEnding: clientSecret ? clientSecret.slice(-6) : 'missing',
+    clientSecretLooksValid: /^GOCSPX-/.test(clientSecret),
+    clientSecretHasEnvPrefix: clientSecret.startsWith('GOOGLE_CLIENT_SECRET='),
+    redirectUri,
+    configuredRedirectUri: configuredRedirectUri || 'not-set',
+    requestBaseUrl: requestBaseUrl(req),
+    publicAppUrl: process.env.PUBLIC_APP_URL || '',
+    appUrl: process.env.APP_URL || '',
+    tokenEncryptionConfigured: Boolean(process.env.GOOGLE_TOKEN_ENCRYPTION_KEY),
+    requiredRedirectUriForGoogleCloud: `${requestBaseUrl(req)}/api/google/callback`,
+    vercelCommit: process.env.VERCEL_GIT_COMMIT_SHA || '',
+    vercelEnv: process.env.VERCEL_ENV || '',
+    nodeEnv: process.env.NODE_ENV || ''
+  };
 }
 
 function safeReturnBaseUrl(value) {
@@ -2622,6 +2668,20 @@ function handleDeveloperAiDiagnostics(req, res) {
   });
 }
 
+function handleDeveloperGoogleDiagnostics(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  return sendJson(res, googleOAuthDiagnostics(req));
+}
+
 async function handleDeveloperAiTest(req, res) {
   const session = requireSession(req, res);
 
@@ -2865,6 +2925,10 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/developer/ai-diagnostics') {
       return handleDeveloperAiDiagnostics(req, res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/developer/google-diagnostics') {
+      return handleDeveloperGoogleDiagnostics(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/developer/ai-test') {
