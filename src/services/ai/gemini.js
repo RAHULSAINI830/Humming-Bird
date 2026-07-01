@@ -99,6 +99,13 @@ function retryDelayMs(response, attempt) {
   return Math.min(1200 * attempt, 5000);
 }
 
+function createAiError(code, providerMessage = '', providerStatus = '') {
+  const error = new Error(code);
+  error.providerMessage = String(providerMessage || '').slice(0, 500);
+  error.providerStatus = providerStatus;
+  return error;
+}
+
 const ANALYSIS_FIELDS = [
   'business_summary',
   'detected_industry',
@@ -812,11 +819,14 @@ async function callGemini(body, signal) {
     }
 
     if (response.status === 401 || response.status === 403) {
-      throw new Error('AI_AUTH_FAILED');
+      console.warn(
+        `Hummingbird AI auth failed: status=${response.status}, model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+      );
+      throw createAiError('AI_AUTH_FAILED', errorMessage, response.status);
     }
 
     if (response.status === 429) {
-      lastError = new Error('AI_RATE_LIMITED');
+      lastError = createAiError('AI_RATE_LIMITED', errorMessage, response.status);
 
       if (attempt < attempts) {
         await sleep(retryDelayMs(response, attempt));
@@ -830,11 +840,14 @@ async function callGemini(body, signal) {
     }
 
     if (/quota|billing|permission|api key not valid/i.test(errorMessage)) {
-      throw new Error('AI_REQUEST_FAILED');
+      console.warn(
+        `Hummingbird AI request rejected: status=${response.status}, model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+      );
+      throw createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
     }
 
     if (response.status >= 500) {
-      lastError = new Error('AI_SERVER_ERROR');
+      lastError = createAiError('AI_SERVER_ERROR', errorMessage, response.status);
 
       if (attempt < attempts) {
         await sleep(1000 * attempt);
@@ -844,10 +857,60 @@ async function callGemini(body, signal) {
       throw lastError;
     }
 
-    throw new Error('AI_REQUEST_FAILED');
+    console.warn(
+      `Hummingbird AI request failed: status=${response.status}, model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+    );
+    throw createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
   }
 
-  throw lastError || new Error('AI_REQUEST_FAILED');
+  throw lastError || createAiError('AI_REQUEST_FAILED');
+}
+
+async function testProviderConnection() {
+  if (!process.env.GEMINI_API_KEY) {
+    throw createAiError('AI_MISSING_KEY');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.min(geminiTimeout(), 30000));
+
+  try {
+    const response = await callGemini({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: 'Return exactly: ok' }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 8
+      }
+    }, controller.signal);
+
+    const payload = await response.json();
+    return {
+      ok: true,
+      diagnostics: getProviderDiagnostics(),
+      responsePreview: String(extractGeminiText(payload) || '').slice(0, 50)
+    };
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      error = createAiError('AI_TIMEOUT');
+    } else if (error instanceof TypeError) {
+      error = createAiError('AI_NETWORK_ERROR');
+    }
+
+    return {
+      ok: false,
+      diagnostics: getProviderDiagnostics(),
+      error: error?.message || 'AI_REQUEST_FAILED',
+      providerStatus: error?.providerStatus || '',
+      providerMessage: error?.providerMessage || ''
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function generateBusinessAnalysis(company) {
@@ -1080,5 +1143,6 @@ module.exports = {
   discoverCompetitors,
   analyzePromptVisibility,
   generateAeoRecommendations,
+  testProviderConnection,
   getProviderDiagnostics
 };

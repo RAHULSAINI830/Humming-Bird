@@ -288,8 +288,9 @@ function aiErrorResponse(error, fallbackMessage) {
 
   return {
     error: messages[code] || fallbackMessage,
-    detail: code && messages[code] ? '' : String(error?.message || '').slice(0, 500),
-    code: error?.code || code
+    detail: String(error?.providerMessage || (code && messages[code] ? '' : error?.message || '')).slice(0, 500),
+    code: error?.code || code,
+    providerStatus: error?.providerStatus || ''
   };
 }
 
@@ -2621,6 +2622,25 @@ function handleDeveloperAiDiagnostics(req, res) {
   });
 }
 
+async function handleDeveloperAiTest(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  if (!AIService.testProviderConnection) {
+    return sendJson(res, { ok: false, error: 'Diagnostics unavailable' }, 500);
+  }
+
+  const result = await AIService.testProviderConnection();
+  return sendJson(res, result, result.ok ? 200 : 502);
+}
+
 async function handleDeveloperDeleteCompany(req, res) {
   const session = requireSession(req, res);
 
@@ -2845,6 +2865,10 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/developer/ai-diagnostics') {
       return handleDeveloperAiDiagnostics(req, res);
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/developer/ai-test') {
+      return handleDeveloperAiTest(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/developer/companies/delete') {

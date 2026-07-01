@@ -24,11 +24,16 @@ function getProviderDiagnostics() {
   return GeminiProvider.getProviderDiagnostics();
 }
 
+async function testProviderConnection() {
+  return GeminiProvider.testProviderConnection();
+}
+
 module.exports = {
   generateBusinessAnalysis,
   generateCompanyPrompts,
   discoverCompetitors,
   analyzePromptVisibility,
   generateAeoRecommendations,
-  getProviderDiagnostics
+  getProviderDiagnostics,
+  testProviderConnection
 };
