@@ -924,8 +924,10 @@ function setupPipelineStatus(companyId) {
     }
   ];
 
+  const requiredSteps = steps.filter((step) => ['analysis', 'competitors', 'prompts'].includes(step.key));
+
   return {
-    ready: steps.every((step) => step.complete),
+    ready: requiredSteps.every((step) => step.complete),
     steps,
     counts: {
       prompts: prompts.length,

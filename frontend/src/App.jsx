@@ -28,6 +28,7 @@ function App() {
   const [settingsData, setSettingsData] = useState(null);
   const [developerData, setDeveloperData] = useState(null);
   const [setupStatus, setSetupStatus] = useState(null);
+  const [setupStatusLoading, setSetupStatusLoading] = useState(false);
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [notice, setNotice] = useState('');
@@ -40,7 +41,6 @@ function App() {
 
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, nextView);
-      window.history.replaceState({}, '', `${window.location.pathname}#${nextView}`);
     }
   }
 
@@ -132,6 +132,7 @@ function App() {
       setBusinessAnalysis(null);
       setAeoRecommendations(null);
       setSetupStatus(null);
+      setSetupStatusLoading(false);
       setSetupLoading(false);
       setSetupError('');
       setLoadedViews({});
@@ -208,9 +209,11 @@ function App() {
     }
 
     setSetupStatus(null);
+    setSetupStatusLoading(true);
     api('/api/setup/status')
       .then(setSetupStatus)
-      .catch((error) => setSetupError(error.message));
+      .catch((error) => setSetupError(error.message))
+      .finally(() => setSetupStatusLoading(false));
   }, [status, session?.selectedCompanyId, session?.isDeveloper]);
 
   async function handleLogout() {
@@ -229,6 +232,7 @@ function App() {
     });
     setSession(data);
     setSetupStatus(null);
+    setSetupStatusLoading(false);
     setDashboard(null);
     setBusinessAnalysis(null);
     setAeoRecommendations(null);
@@ -281,6 +285,10 @@ function App() {
     );
   }
 
+  if (!session.isDeveloper && session.selectedCompanyId && setupStatusLoading && !setupStatus) {
+    return <LoadingScreen />;
+  }
+
   if (!session.isDeveloper && session.selectedCompanyId && (!setupStatus || !setupStatus.ready)) {
     return (
       <SetupGenerationScreen
@@ -297,7 +305,10 @@ function App() {
   return (
     <main className="app-shell">
       <aside className="sidebar">
-        <a className="sidebar-brand" href="#dashboard" onClick={() => setActiveView('dashboard')}>
+        <a className="sidebar-brand" href="/app" onClick={(event) => {
+          event.preventDefault();
+          setActiveView('dashboard');
+        }}>
           <BrandLogo />
         </a>
 
