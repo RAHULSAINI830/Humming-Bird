@@ -443,6 +443,7 @@ function initDatabase() {
   cleanupDemoData();
   normalizeInternalDeveloperWorkspace();
   seedDefaultDeveloper();
+  seedConfiguredBusinessOwner();
 }
 
 function normalizeInternalDeveloperWorkspace() {
@@ -558,6 +559,92 @@ function seedDefaultDeveloper() {
 
     db.exec('COMMIT');
     console.log('Default Developer user created from HUMMINGBIRD_DEVELOPER_PASSWORD.');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+function seedConfiguredBusinessOwner() {
+  const email = String(process.env.HUMMINGBIRD_SEED_OWNER_EMAIL || '').trim().toLowerCase();
+  const password = String(process.env.HUMMINGBIRD_SEED_OWNER_PASSWORD || '').trim();
+  const fullName = String(process.env.HUMMINGBIRD_SEED_OWNER_NAME || 'Business Owner').trim();
+  const companyName = String(process.env.HUMMINGBIRD_SEED_COMPANY_NAME || '').trim();
+  const websiteUrl = String(process.env.HUMMINGBIRD_SEED_COMPANY_URL || '').trim();
+  const logoUrl = String(process.env.HUMMINGBIRD_SEED_COMPANY_LOGO || '').trim();
+
+  if (!email || !password || !companyName || !websiteUrl) {
+    return;
+  }
+
+  const businessOwnerRole = getRoleByName('Business Owner');
+
+  if (!businessOwnerRole) {
+    console.warn('Business Owner role is missing. Configured owner user was not created.');
+    return;
+  }
+
+  try {
+    db.exec('BEGIN');
+
+    let user = getUserByEmail(email);
+
+    if (!user) {
+      const result = db.prepare(`
+        INSERT INTO users (full_name, email, password_hash, status)
+        VALUES (?, ?, ?, 'active')
+      `).run(fullName || 'Business Owner', email, hashPassword(password));
+      user = { id: Number(result.lastInsertRowid) };
+    } else {
+      db.prepare(`
+        UPDATE users
+        SET full_name = ?,
+            password_hash = ?,
+            status = 'active',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(fullName || user.full_name || 'Business Owner', hashPassword(password), user.id);
+    }
+
+    let company = db.prepare('SELECT id FROM companies WHERE lower(company_name) = lower(?) OR website_url = ?').get(companyName, websiteUrl);
+
+    if (!company) {
+      const result = db.prepare(`
+        INSERT INTO companies (
+          company_name,
+          website_url,
+          logo_url,
+          onboarding_completed,
+          onboarding_completed_at,
+          status
+        )
+        VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, 'active')
+      `).run(companyName, websiteUrl, logoUrl);
+      company = { id: Number(result.lastInsertRowid) };
+    } else {
+      db.prepare(`
+        UPDATE companies
+        SET company_name = ?,
+            website_url = ?,
+            logo_url = ?,
+            onboarding_completed = 1,
+            onboarding_completed_at = COALESCE(onboarding_completed_at, CURRENT_TIMESTAMP),
+            status = 'active',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(companyName, websiteUrl, logoUrl, company.id);
+    }
+
+    db.prepare(`
+      INSERT INTO user_company_access (user_id, company_id, role_id, status)
+      VALUES (?, ?, ?, 'active')
+      ON CONFLICT(user_id, company_id)
+      DO UPDATE SET role_id = excluded.role_id,
+                    status = 'active'
+    `).run(user.id, company.id, businessOwnerRole.id);
+
+    db.exec('COMMIT');
+    console.log(`Configured Business Owner seed ensured for ${email}.`);
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
