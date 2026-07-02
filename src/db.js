@@ -1605,7 +1605,8 @@ function listPromptVisibilitySnapshots(companyId, limit = 500) {
       p.prompt_category,
       p.prompt_intent,
       r.run_type,
-      r.source_type AS run_source_type
+      r.source_type AS run_source_type,
+      r.created_at AS run_created_at
     FROM prompt_visibility_snapshots s
     JOIN company_prompts p ON p.id = s.prompt_id
     JOIN prompt_visibility_runs r ON r.id = s.run_id

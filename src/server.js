@@ -734,6 +734,31 @@ function topEntries(map, limit = 10) {
     .slice(0, limit);
 }
 
+function shortRunLabel(index, total, value) {
+  if (total <= 1) {
+    return 'Latest';
+  }
+
+  if (index === total - 1) {
+    return 'Latest';
+  }
+
+  if (value) {
+    const date = new Date(String(value).replace(' ', 'T'));
+    if (!Number.isNaN(date.getTime())) {
+      return new Intl.DateTimeFormat('en', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).format(date);
+    }
+  }
+
+  return `Run ${index + 1}`;
+}
+
 function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) {
   const enriched = enrichPrompts(prompts);
   const snapshotRows = visibilitySnapshots.length ? enrichPrompts(visibilitySnapshots) : [];
@@ -837,27 +862,89 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
   if (snapshotRows.length) {
     brandTrendMap.clear();
     domainTrendMap.clear();
+  }
+
+  let brandTrend = [];
+  let domainTrend = [];
+
+  if (snapshotRows.length) {
+    const runMap = new Map();
 
     snapshotRows.forEach((snapshot) => {
-      const date = String(snapshot.checked_at || snapshot.created_at || '').slice(0, 10) || 'Unknown';
+      const runId = Number(snapshot.run_id || 0) || `${snapshot.checked_at || snapshot.created_at || ''}-${snapshot.id}`;
+      if (!runMap.has(runId)) {
+        runMap.set(runId, {
+          id: runId,
+          createdAt: snapshot.run_created_at || snapshot.checked_at || snapshot.created_at || '',
+          prompts: new Set(),
+          brandMentioned: 0,
+          competitorMap: new Map(),
+          ownDomainCitations: 0
+        });
+      }
+
+      const run = runMap.get(runId);
+      run.prompts.add(Number(snapshot.prompt_id));
 
       if (snapshot.brand_mentioned) {
-        incrementMap(brandTrendMap, date);
+        run.brandMentioned += 1;
       }
+
+      snapshot.competitor_mentions_parsed.forEach((competitor) => {
+        incrementMap(run.competitorMap, competitor.competitor_name || competitor.name || competitor.company_name || 'Unknown competitor');
+      });
 
       snapshot.recommended_citations_parsed.forEach((citation) => {
         const domain = hostnameFromUrl(citation.url || citation.source_owner);
 
         if (companyDomain && domain && domain.toLowerCase() === companyDomain.toLowerCase()) {
-          incrementMap(domainTrendMap, date);
+          run.ownDomainCitations += 1;
         }
       });
     });
-  }
 
-  const trendDates = Array.from(new Set([...brandTrendMap.keys(), ...domainTrendMap.keys()])).sort();
-  const brandTrend = trendDates.map((date) => ({ date, value: brandTrendMap.get(date) || 0 }));
-  const domainTrend = trendDates.map((date) => ({ date, value: domainTrendMap.get(date) || 0 }));
+    const runs = Array.from(runMap.values())
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)) || Number(a.id) - Number(b.id))
+      .slice(-7);
+
+    brandTrend = runs.map((run, index) => {
+      const totalPrompts = Math.max(run.prompts.size, 1);
+      const competitorsForRun = topEntries(run.competitorMap, 4);
+      const brands = [
+        {
+          name: company?.company_name || 'Your brand',
+          type: 'own',
+          mentions: run.brandMentioned,
+          value: Math.round((run.brandMentioned / totalPrompts) * 100)
+        },
+        ...competitorsForRun.map((competitor) => ({
+          name: competitor.name,
+          type: 'competitor',
+          mentions: competitor.count,
+          value: Math.round((competitor.count / totalPrompts) * 100)
+        }))
+      ];
+
+      return {
+        runId: run.id,
+        date: shortRunLabel(index, runs.length, run.createdAt),
+        created_at: run.createdAt,
+        value: brands.reduce((sum, item) => sum + item.value, 0),
+        brands
+      };
+    });
+
+    domainTrend = runs.map((run, index) => ({
+      runId: run.id,
+      date: shortRunLabel(index, runs.length, run.createdAt),
+      created_at: run.createdAt,
+      value: run.ownDomainCitations
+    }));
+  } else {
+    const trendDates = Array.from(new Set([...brandTrendMap.keys(), ...domainTrendMap.keys()])).sort();
+    brandTrend = trendDates.map((date) => ({ date, value: brandTrendMap.get(date) || 0 }));
+    domainTrend = trendDates.map((date) => ({ date, value: domainTrendMap.get(date) || 0 }));
+  }
   const insights = [
     {
       priority: brandMentioned < Math.ceil(checkedPrompts.length / 2) ? 'High' : 'Medium',
