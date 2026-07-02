@@ -220,7 +220,7 @@ function BrandCoverageChart({ rows, trend }) {
                   const segmentHeight = total ? Math.max(4, (item.value / total) * 100) : 0;
                   return (
                     <span
-                      key={`${date}-${item.name}`}
+                      key={`${point.runId || point.date || index}-${item.name}`}
                       style={{ height: `${segmentHeight}%`, borderTopColor: item.color }}
                       title={`${item.name}: ${item.value}%`}
                     />
