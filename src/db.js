@@ -1611,7 +1611,7 @@ function listPromptVisibilitySnapshots(companyId, limit = 500) {
     JOIN company_prompts p ON p.id = s.prompt_id
     JOIN prompt_visibility_runs r ON r.id = s.run_id
     WHERE s.company_id = ?
-    ORDER BY s.checked_at ASC, s.id ASC
+    ORDER BY s.checked_at DESC, s.id DESC
     LIMIT ?
   `).all(companyId, limit);
 }

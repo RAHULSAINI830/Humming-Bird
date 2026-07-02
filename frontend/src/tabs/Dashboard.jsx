@@ -22,6 +22,9 @@ export default function Dashboard({ data, session, workspace, goTo }) {
   const checkedPrompts = displayVisibility.checkedPrompts ?? 0;
   const ownBrand = brandRanking.find((item) => item.type === 'own') || brandRanking[0];
   const competitorRows = brandRanking.filter((item) => item.type !== 'own');
+  const responseRunCount = Number(displayVisibility.responseRunCount || displayVisibility.brandTrend?.length || displayVisibility.domainTrend?.length || 0);
+  const responseWindowLabel = responseRunCount ? `Last ${Math.min(7, responseRunCount)} responses` : 'Last 7 responses';
+  const engineLabel = activeProviders.length ? activeProviders.join(', ') : 'All engines';
 
   const percentOrEmpty = (value) => value === null || value === undefined ? 'No data yet' : `${value}%`;
 
@@ -68,10 +71,10 @@ export default function Dashboard({ data, session, workspace, goTo }) {
       <div className="overview-filter-bar">
         <p>Report based on {checkedPrompts} prompts. Showing {checkedPrompts} filtered prompts.</p>
         <div className="overview-filter-controls">
-          <button type="button">Last 14 Days</button>
+          <button type="button" title="Based on saved AI response refresh runs">{responseWindowLabel}</button>
           <button type="button">All Tags</button>
-          <button type="button">All Engines</button>
-          <button type="button">United States</button>
+          <button type="button">{engineLabel}</button>
+          <button type="button">All markets</button>
         </div>
       </div>
 
@@ -126,13 +129,13 @@ export default function Dashboard({ data, session, workspace, goTo }) {
 
       <div className="dashboard-table-grid overview-table-grid">
         <DashboardPanel title="Brand Ranking" action="All brands">
-          <DashboardRankingTable rows={brandRanking} />
+          <DashboardRankingTable rows={brandRanking} onReport={() => goTo?.('competitors')} />
         </DashboardPanel>
 
         <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
 
         <DashboardPanel title="Top Prompts by Brand Mentions">
-          <DashboardPromptTable rows={topPromptsByBrand} metricLabel="Share" metricKey="share" />
+          <DashboardPromptTable rows={topPromptsByBrand} metricLabel="Mentions" metricKey="mentions" onReport={() => goTo?.('prompts')} />
         </DashboardPanel>
       </div>
 
@@ -144,7 +147,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
         <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
 
         <DashboardPanel title="Citations">
-          <DashboardCitationTable rows={citationsTable} />
+          <DashboardCitationTable rows={citationsTable} onReport={() => goTo?.('citations')} />
         </DashboardPanel>
       </div>
 
@@ -156,19 +159,19 @@ export default function Dashboard({ data, session, workspace, goTo }) {
         <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
 
         <DashboardPanel title="Domain Citations">
-          <DomainCitationsCard rows={domainCitations} />
+          <DomainCitationsCard rows={domainCitations} onReport={() => goTo?.('citations')} />
         </DashboardPanel>
       </div>
 
       <div className="dashboard-table-grid overview-table-grid">
         <DashboardPanel title="Top Prompts by Website Citations">
-          <DashboardPromptTable rows={topPromptsByCitations} metricLabel="Citations" metricKey="citations" />
+          <DashboardPromptTable rows={topPromptsByCitations} metricLabel="Citations" metricKey="citations" onReport={() => goTo?.('citations')} />
         </DashboardPanel>
 
         <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
 
         <DashboardPanel title="Citation Opportunities">
-          <DashboardPromptTable rows={topPromptsByCitations} metricLabel="Citations" metricKey="citations" />
+          <DashboardPromptTable rows={topPromptsByCitations} metricLabel="Citations" metricKey="citations" onReport={() => goTo?.('citations')} />
         </DashboardPanel>
       </div>
     </section>
@@ -400,7 +403,7 @@ function DomainCoverageChart({ data, brandName }) {
   );
 }
 
-function DomainCitationsCard({ rows }) {
+function DomainCitationsCard({ rows, onReport }) {
   const validRows = (rows || []).filter((row) => row.domain && row.domain.includes('.') && !row.domain.includes(' '));
   const total = validRows.reduce((sum, item) => sum + Number(item.citations || 0), 0);
   if (!validRows.length) return <DashboardEmptyBlock title="No domain citations yet" text="Domain citation data appears after prompt checks save citation URLs." />;
@@ -417,6 +420,7 @@ function DomainCitationsCard({ rows }) {
           </p>
         ))}
       </div>
+      <button type="button" className="overview-table-report-button" onClick={onReport}>View Full Report</button>
     </div>
   );
 }
@@ -432,29 +436,32 @@ function DashboardSideStat({ value, rows, empty }) {
   );
 }
 
-function DashboardRankingTable({ rows }) {
+function DashboardRankingTable({ rows, onReport }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No ranking yet" text="Brand ranking appears after prompts are checked against an AI provider." />;
 
   return (
-    <table className="dashboard-data-table overview-data-table">
-      <thead><tr><th>#</th><th>Brand</th><th>Sentiment</th><th>Mentions</th><th>Coverage</th><th>Share</th></tr></thead>
-      <tbody>
-        {rows.slice(0, 10).map((row, index) => (
-          <tr key={`${row.name}-${index}`}>
-            <td>{index + 1}</td>
-            <td className="overview-brand-cell"><LogoChip name={row.name} /><span>{row.name}</span></td>
-            <td><span className={`overview-sentiment-pill ${row.mentions ? 'positive' : 'neutral'}`}>{row.mentions ? `+${row.mentions}` : 'N/A'}</span></td>
-            <td>{row.mentions}</td>
-            <td>{row.coverage}%</td>
-            <td>{row.share}%</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table className="dashboard-data-table overview-data-table">
+        <thead><tr><th>#</th><th>Brand</th><th>Sentiment</th><th>Mentions</th><th>Coverage</th><th>Share</th></tr></thead>
+        <tbody>
+          {rows.slice(0, 10).map((row, index) => (
+            <tr key={`${row.name}-${index}`}>
+              <td>{index + 1}</td>
+              <td className="overview-brand-cell"><LogoChip name={row.name} /><span>{row.name}</span></td>
+              <td><span className={`overview-sentiment-pill ${row.mentions ? 'positive' : 'neutral'}`}>{row.mentions ? `+${row.mentions}` : 'N/A'}</span></td>
+              <td>{row.mentions}</td>
+              <td>{row.coverage}%</td>
+              <td>{row.share}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button type="button" className="overview-table-report-button" onClick={onReport}>View Full Report</button>
+    </>
   );
 }
 
-function DashboardPromptTable({ rows, metricLabel, metricKey }) {
+function DashboardPromptTable({ rows, metricLabel, metricKey, onReport }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No prompt data yet" text="Prompt rankings appear after AI response checks are saved." />;
 
   return (
@@ -474,12 +481,12 @@ function DashboardPromptTable({ rows, metricLabel, metricKey }) {
           })}
         </tbody>
       </table>
-      <button type="button" className="overview-table-report-button">View Full Report</button>
+      <button type="button" className="overview-table-report-button" onClick={onReport}>View Full Report</button>
     </>
   );
 }
 
-function DashboardCitationTable({ rows }) {
+function DashboardCitationTable({ rows, onReport }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No citations yet" text="Citation tables fill when checked prompts return recommended source pages." />;
 
   return (
@@ -497,7 +504,7 @@ function DashboardCitationTable({ rows }) {
           ))}
         </tbody>
       </table>
-      <button type="button" className="overview-table-report-button">View Full Report</button>
+      <button type="button" className="overview-table-report-button" onClick={onReport}>View Full Report</button>
     </>
   );
 }

@@ -999,6 +999,12 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
     })),
     brandTrend,
     domainTrend,
+    responseRunCount: brandTrend.length || domainTrend.length,
+    latestResponseRunAt: [...brandTrend, ...domainTrend]
+      .map((point) => point.created_at)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || null,
     insights
   };
 }
