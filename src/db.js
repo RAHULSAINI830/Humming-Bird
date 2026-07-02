@@ -211,6 +211,56 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_company_competitors_company_id
       ON company_competitors(company_id);
 
+    CREATE TABLE IF NOT EXISTS prompt_visibility_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      run_type TEXT NOT NULL DEFAULT 'manual',
+      source_type TEXT NOT NULL DEFAULT 'hummingbird-ai',
+      status TEXT NOT NULL DEFAULT 'completed',
+      prompts_checked INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_visibility_runs_company_id
+      ON prompt_visibility_runs(company_id);
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_visibility_runs_created_at
+      ON prompt_visibility_runs(company_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS prompt_visibility_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL,
+      prompt_id INTEGER NOT NULL,
+      brand_mentioned INTEGER NOT NULL DEFAULT 0,
+      brand_mention_context TEXT,
+      competitor_mentions TEXT,
+      recommended_citations TEXT,
+      ai_response_summary TEXT,
+      chatgpt_response_summary TEXT DEFAULT 'NA',
+      claude_response_summary TEXT DEFAULT 'NA',
+      perplexity_response_summary TEXT DEFAULT 'NA',
+      gemini_response_summary TEXT DEFAULT 'NA',
+      visibility_status TEXT NOT NULL DEFAULT 'checked',
+      checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (run_id) REFERENCES prompt_visibility_runs(id) ON DELETE CASCADE,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (prompt_id) REFERENCES company_prompts(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_visibility_snapshots_company_id
+      ON prompt_visibility_snapshots(company_id);
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_visibility_snapshots_run_id
+      ON prompt_visibility_snapshots(run_id);
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_visibility_snapshots_prompt_id
+      ON prompt_visibility_snapshots(prompt_id);
+
     CREATE TABLE IF NOT EXISTS aeo_recommendations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -1419,7 +1469,37 @@ function upsertCompanyCompetitors(companyId, competitors, sourceType = 'gemini')
   }
 }
 
-function updatePromptVisibility(companyId, results) {
+function updatePromptVisibility(companyId, results, options = {}) {
+  const runType = options.runType || 'manual';
+  const sourceType = options.sourceType || 'hummingbird-ai';
+  const createRun = db.prepare(`
+    INSERT INTO prompt_visibility_runs (
+      company_id,
+      run_type,
+      source_type,
+      status,
+      prompts_checked
+    )
+    VALUES (?, ?, ?, 'completed', ?)
+  `);
+  const insertSnapshot = db.prepare(`
+    INSERT INTO prompt_visibility_snapshots (
+      run_id,
+      company_id,
+      prompt_id,
+      brand_mentioned,
+      brand_mention_context,
+      competitor_mentions,
+      recommended_citations,
+      ai_response_summary,
+      gemini_response_summary,
+      chatgpt_response_summary,
+      claude_response_summary,
+      perplexity_response_summary,
+      visibility_status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
   const updatePrompt = db.prepare(`
     UPDATE company_prompts
     SET
@@ -1442,21 +1522,50 @@ function updatePromptVisibility(companyId, results) {
   try {
     db.exec('BEGIN');
 
+    const runResult = createRun.run(companyId, runType, sourceType, Array.isArray(results) ? results.length : 0);
+    const runId = Number(runResult.lastInsertRowid || runResult.lastInsertRowID || runResult.insertId || 0);
+
     results.forEach((result) => {
+      const promptId = Number(result.prompt_id);
+      const competitorMentionsJson = JSON.stringify(result.competitor_mentions || []);
+      const recommendedCitationsJson = JSON.stringify(result.recommended_citations || []);
+      const responseSummary = result.ai_response_summary || '';
+      const providerResponse = responseSummary || 'NA';
+      const visibilityStatus = result.visibility_status || 'checked';
+
+      if (runId) {
+        insertSnapshot.run(
+          runId,
+          companyId,
+          promptId,
+          result.brand_mentioned ? 1 : 0,
+          result.brand_mention_context || '',
+          competitorMentionsJson,
+          recommendedCitationsJson,
+          responseSummary,
+          providerResponse,
+          result.chatgpt_response_summary || 'NA',
+          result.claude_response_summary || 'NA',
+          result.perplexity_response_summary || 'NA',
+          visibilityStatus
+        );
+      }
+
       updatePrompt.run(
         result.brand_mentioned ? 1 : 0,
         result.brand_mention_context || '',
-        JSON.stringify(result.competitor_mentions || []),
-        JSON.stringify(result.recommended_citations || []),
-        result.ai_response_summary || '',
-        result.ai_response_summary || 'NA',
-        result.visibility_status || 'checked',
+        competitorMentionsJson,
+        recommendedCitationsJson,
+        responseSummary,
+        providerResponse,
+        visibilityStatus,
         companyId,
-        Number(result.prompt_id)
+        promptId
       );
     });
 
     db.exec('COMMIT');
+    return { runId, promptsChecked: Array.isArray(results) ? results.length : 0 };
   } catch (error) {
     try {
       db.exec('ROLLBACK');
@@ -1466,6 +1575,44 @@ function updatePromptVisibility(companyId, results) {
 
     throw error;
   }
+}
+
+function listPromptVisibilityRuns(companyId, limit = 10) {
+  return db.prepare(`
+    SELECT
+      id,
+      company_id,
+      run_type,
+      source_type,
+      status,
+      prompts_checked,
+      error_message,
+      created_at,
+      updated_at
+    FROM prompt_visibility_runs
+    WHERE company_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `).all(companyId, limit);
+}
+
+function listPromptVisibilitySnapshots(companyId, limit = 500) {
+  return db.prepare(`
+    SELECT
+      s.*,
+      p.prompt_order,
+      p.prompt_text,
+      p.prompt_category,
+      p.prompt_intent,
+      r.run_type,
+      r.source_type AS run_source_type
+    FROM prompt_visibility_snapshots s
+    JOIN company_prompts p ON p.id = s.prompt_id
+    JOIN prompt_visibility_runs r ON r.id = s.run_id
+    WHERE s.company_id = ?
+    ORDER BY s.checked_at ASC, s.id ASC
+    LIMIT ?
+  `).all(companyId, limit);
 }
 
 function updateCompanyProfile(companyId, profile) {
@@ -1998,6 +2145,8 @@ module.exports = {
   removeCompanyCompetitor,
   upsertCompanyCompetitors,
   updatePromptVisibility,
+  listPromptVisibilityRuns,
+  listPromptVisibilitySnapshots,
   upsertGoogleConnection,
   getGoogleConnection,
   updateGoogleConnectionTokens,

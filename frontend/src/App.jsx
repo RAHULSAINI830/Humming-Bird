@@ -11,6 +11,25 @@ import Citations from './tabs/Citations';
 import GeoVisibility from './tabs/GeoVisibility';
 import Settings from './tabs/Settings';
 import DeveloperAdmin from './tabs/DeveloperAdmin';
+import businessAnalysisIcon from './assets/nav/business-analysis.svg';
+import citationsIcon from './assets/nav/citations.svg';
+import competitorsIcon from './assets/nav/competitors.svg';
+import dashboardIcon from './assets/nav/dashboard.svg';
+import geoIcon from './assets/nav/geo.svg';
+import promptsIcon from './assets/nav/prompts.svg';
+import settingsIcon from './assets/nav/settings.svg';
+import whatsNextIcon from './assets/nav/whats-next.svg';
+
+const navIconMap = {
+  dashboard: dashboardIcon,
+  'business-analysis': businessAnalysisIcon,
+  'aeo-recommendations': whatsNextIcon,
+  competitors: competitorsIcon,
+  prompts: promptsIcon,
+  citations: citationsIcon,
+  geo: geoIcon,
+  settings: settingsIcon
+};
 
 function App() {
   const [session, setSession] = useState(null);
@@ -34,6 +53,7 @@ function App() {
   const [notice, setNotice] = useState('');
   const [loadingViews, setLoadingViews] = useState({});
   const [loadedViews, setLoadedViews] = useState({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   function setActiveView(view) {
     const nextView = allowedViewKeys.has(view) ? view : DEFAULT_ACTIVE_VIEW;
@@ -266,6 +286,33 @@ function App() {
     }
   }
 
+  async function handleRefreshVisibilityResponses() {
+    const result = await api('/api/settings/refresh-visibility', {
+      method: 'POST',
+      body: '{}'
+    });
+
+    if (result.settings) {
+      setSettingsData(result.settings);
+    }
+
+    setDashboard(null);
+    setPromptsData({ prompts: [], summary: null });
+    setCitationsData({ citations: [], summary: null });
+    setAeoRecommendations(null);
+    setLoadedViews((current) => ({
+      ...current,
+      dashboard: false,
+      prompts: false,
+      citations: false,
+      'aeo-recommendations': false,
+      settings: true
+    }));
+    setNotice(result.message || 'AI responses regenerated.');
+
+    return result;
+  }
+
   if (status === 'loading') {
     return <LoadingScreen />;
   }
@@ -303,29 +350,31 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
-      <aside className="sidebar">
+    <main className={`app-shell ${sidebarOpen ? 'sidebar-open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? 'is-open' : ''}`}>
         <a className="sidebar-brand" href="/app" onClick={(event) => {
           event.preventDefault();
+          setSidebarOpen((current) => !current);
           setActiveView('dashboard');
         }}>
-          <BrandLogo />
+          <img className="sidebar-favicon" src="/app/favicon.svg" alt="Hummingbird" />
+          <span className="sidebar-full-logo"><BrandLogo /></span>
         </a>
 
         <nav className="sidebar-nav">
           {session.isDeveloper ? (
             <button type="button" onClick={() => setActiveView('developer')} className={activeView === 'developer' ? 'active' : ''}>
-              <span>▰</span> Developer Admin
+              <span>▰</span><span className="sidebar-link-label">Developer Admin</span>
             </button>
           ) : null}
-          {navItems.map(([label, view, icon]) => (
+          {navItems.map(([label, view]) => (
             <div className={view === 'geo' ? 'sidebar-nav-group' : ''} key={view}>
               <button
                 type="button"
                 onClick={() => setActiveView(view)}
                 className={activeView === view ? 'active' : ''}
               >
-                <span>{icon}</span> {label}
+                <span className="sidebar-nav-icon">{navIconMap[view] ? <img src={navIconMap[view]} alt="" aria-hidden="true" /> : null}</span><span className="sidebar-link-label">{label}</span>
                 {view === 'geo' ? <em className="nav-beta-tag">Beta</em> : null}
               </button>
               {view === 'geo' ? (
@@ -351,6 +400,14 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom">
+          <button type="button" className="sidebar-logout-icon" onClick={handleLogout} aria-label="Logout" title="Logout">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 6.5V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-1.5" />
+              <path d="M3 12h11" />
+              <path d="m7 8-4 4 4 4" />
+            </svg>
+          </button>
+
           <div className="sidebar-panel">
             <p>Selected role</p>
             <strong>{session.selectedRoleName || 'No role selected'}</strong>
@@ -383,7 +440,7 @@ function App() {
         ) : null}
 
         {!(loadingViews[activeView] && !loadedViews[activeView]) ? (
-          <div className={loadingViews[activeView] ? 'tab-refreshing' : ''}>
+          <div className={`tab-content-wrapper ${loadingViews[activeView] ? 'tab-refreshing' : ''}`}>
             {activeView === 'dashboard' ? <Dashboard data={dashboard} session={session} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
             {activeView === 'business-analysis' ? <BusinessAnalysis data={businessAnalysis} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
@@ -391,7 +448,7 @@ function App() {
             {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
-            {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} onRefreshVisibility={handleRefreshVisibilityResponses} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
           </div>
         ) : null}

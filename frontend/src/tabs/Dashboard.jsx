@@ -1,163 +1,263 @@
-import { LogoChip, ProviderLogo, SettingsIcon, DashboardEmptyBlock, displayAiSource } from '../components/common';
+import { useState } from 'react';
+import { LogoChip, DashboardEmptyBlock } from '../components/common';
+import aiVisibilityBg from '../assets/dashboard/ai-visibility-bg.png';
+import aiVisibilityIcon from '../assets/dashboard/ai-visibility-icon.png';
+import citationCoverageBg from '../assets/dashboard/citation-coverage-bg.png';
+import citationCoverageIcon from '../assets/dashboard/citation-coverage-icon.png';
+import overviewCardBg from '../assets/dashboard/overview-card-bg.png';
+import shareOfVoiceBg from '../assets/dashboard/share-of-voice-bg.png';
+import shareOfVoiceIcon from '../assets/dashboard/share-of-voice-icon.png';
 
 export default function Dashboard({ data, session, workspace, goTo }) {
-  const progress = data?.setupProgress || { percentage: 0, completed: [], missing: [] };
-  const analysis = data?.businessAnalysis;
+  const company = data?.company || data?.companyProfile || {};
   const visibility = data?.visibilitySummary || {};
   const hasRealData = Boolean(visibility.hasRealData);
-  const activeProviders = visibility.availableProviderLabels || [];
-  const providerRows = visibility.providers || [];
+  const displayVisibility = visibility;
+  const activeProviders = displayVisibility.availableProviderLabels || [];
   const brandRanking = visibility.brandRanking || [];
   const topPromptsByBrand = visibility.topPromptsByBrand || [];
   const topPromptsByCitations = visibility.topPromptsByCitations || [];
   const citationsTable = visibility.citationsTable || [];
   const domainCitations = visibility.domainCitations || [];
+  const checkedPrompts = displayVisibility.checkedPrompts ?? 0;
+  const ownBrand = brandRanking.find((item) => item.type === 'own') || brandRanking[0];
+  const competitorRows = brandRanking.filter((item) => item.type !== 'own');
 
   const percentOrEmpty = (value) => value === null || value === undefined ? 'No data yet' : `${value}%`;
 
   return (
-    <section className="page-content">
-      <div className="page-title page-title-row">
-        <div className="title-with-logo">
-          <LogoChip name={session.selectedCompanyName} url={session.selectedCompanyLogoUrl} size="large" />
-          <div>
-            <p className="eyebrow">Dashboard</p>
-            <h1>Welcome, {session.user.fullName}</h1>
-            <p>Company: {session.selectedCompanyName} · Role: {session.selectedRoleName}</p>
-          </div>
+    <section className="page-content dashboard-overview-page">
+      <div className="overview-dashboard-header">
+        <div className="overview-title-block">
+          <h1>Welcome, <span>{session.user.fullName}</span></h1>
+          <p>Company: {session.selectedCompanyName} · Role: <strong>{session.selectedRoleName}</strong></p>
         </div>
-        <div className="page-title-actions">{workspace}</div>
+        <div className="overview-header-actions">
+          <button type="button" className="overview-export-button" onClick={() => window.print()}>
+            Export Overview
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+          <button type="button" className="overview-notification-button" aria-label="Notifications" title="Notifications">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 8.5a6 6 0 0 0-12 0c0 7-3 7-3 8.7 0 .8.7 1.3 1.5 1.3h15c.8 0 1.5-.5 1.5-1.3 0-1.7-3-1.7-3-8.7Z" />
+              <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" />
+            </svg>
+          </button>
+          <LogoChip name={session.user.fullName} />
+        </div>
       </div>
 
-      <article className="dashboard-hero-card">
-        <div>
-          <p className="eyebrow">Hummingbird AI overview</p>
-          <h2>{hasRealData ? percentOrEmpty(visibility.visibilityScore) : 'Awaiting first AI scan'}</h2>
-          <p>
-            {hasRealData
-              ? `Hummingbird AI analyzed saved responses from available sources: ${activeProviders.join(', ')}. Other providers remain excluded until their API data exists.`
-              : 'No provider response data has been saved yet. Hummingbird AI will analyze only real saved provider results when scans are available.'}
-          </p>
+      <div className="overview-client-row">
+        <div className="overview-client-mini">
+          <LogoChip name={session.selectedCompanyName} url={session.selectedCompanyLogoUrl} />
+          <div>
+            <strong>{session.selectedCompanyName}</strong>
+            <span>{company.website_url || 'Website not added'}</span>
+          </div>
         </div>
-        <div className="dashboard-provider-stack">
-          {providerRows.map((provider) => (
-            <div className={provider.available ? 'available' : ''} key={provider.key}>
-              <ProviderLogo providerKey={provider.key} />
-              <span>{provider.label}</span>
-              <strong>{provider.available ? `${provider.checked} checks` : 'No data'}</strong>
-            </div>
-          ))}
+        <div className="overview-selected-client">
+          <span>Selected Client</span>
+          {workspace}
         </div>
-      </article>
-
-      <div className="dashboard-kpi-grid">
-        <DashboardKpi icon="target" title="AI Visibility Score" value={percentOrEmpty(visibility.visibilityScore)} helper="Brand mentioned across checked prompts" muted={!hasRealData} />
-        <DashboardKpi icon="checkCircle" title="Brand Mentions" value={visibility.brandMentioned ?? 0} helper={`${visibility.checkedPrompts ?? 0} prompts checked`} />
-        <DashboardKpi icon="trend" title="Share of Voice" value={percentOrEmpty(visibility.shareOfVoice)} helper="Brand vs competitor mentions" muted={visibility.shareOfVoice === null || visibility.shareOfVoice === undefined} />
-        <DashboardKpi icon="file" title="Citation Coverage" value={percentOrEmpty(visibility.citationCoverage)} helper={`${visibility.citations ?? 0} citations found`} muted={visibility.citationCoverage === null || visibility.citationCoverage === undefined} />
       </div>
 
-      {!hasRealData ? (
-        <article className="dashboard-guide-card">
+      <div className="overview-filter-bar">
+        <p>Report based on {checkedPrompts} prompts. Showing {checkedPrompts} filtered prompts.</p>
+        <div className="overview-filter-controls">
+          <button type="button">Last 14 Days</button>
+          <button type="button">All Tags</button>
+          <button type="button">All Engines</button>
+          <button type="button">United States</button>
+        </div>
+      </div>
+
+      <div className="overview-hero-grid">
+        <article className="overview-ai-card" style={{ '--overview-card-bg': `url(${overviewCardBg})` }}>
           <div>
-            <p className="eyebrow">How to generate dashboard data</p>
-            <h2>Your analytics dashboard will fill after prompt checks run.</h2>
-            <p>Hummingbird does not use mock numbers. Complete the flow below and this page will populate from saved provider responses, mentions, competitors, citations, and daily refreshes.</p>
-          </div>
-          <div className="dashboard-guide-steps">
-            <button type="button" onClick={() => goTo('business-analysis')}>1. Generate business analysis</button>
-            <button type="button" onClick={() => goTo('competitors')}>2. Confirm competitors</button>
-            <button type="button" onClick={() => goTo('prompts')}>3. Review prompts and run checks</button>
+            <p className="eyebrow">Hummingbird AI overview</p>
+            <strong>{percentOrEmpty(displayVisibility.visibilityScore)}</strong>
+            <small>
+              {hasRealData
+                ? `Hummingbird AI analyzed saved responses from available sources${activeProviders.length ? `: ${activeProviders.join(', ')}` : ''}.`
+                : 'Run prompt checks to calculate visibility from saved AI responses.'}
+            </small>
           </div>
         </article>
-      ) : null}
 
-      <div className="dashboard-analytics-grid">
-        <DashboardPanel title="Brand coverage over time" action="Me + competitors">
-          <MiniTrendChart data={visibility.brandTrend || []} empty="No checked prompt dates yet" />
-        </DashboardPanel>
-
-        <DashboardPanel title="Your brand mentions">
-          <DashboardSideStat value={visibility.brandMentioned ?? 0} rows={brandRanking.slice(1, 4).map((item) => [item.name, item.mentions])} empty="No competitor mentions yet" />
-        </DashboardPanel>
+        <DashboardKpi variant="ai-visibility" title="AI Visibility Score" value={percentOrEmpty(displayVisibility.visibilityScore)} helper="Brand mentioned across checked prompts" muted={false} />
+        <DashboardKpi variant="share-of-voice" title="Share of Voice" value={percentOrEmpty(displayVisibility.shareOfVoice)} helper="Brand vs competitor mentions" muted={false} />
+        <DashboardKpi variant="citation-coverage" title="Citation Coverage" value={percentOrEmpty(displayVisibility.citationCoverage)} helper={`${displayVisibility.citations ?? 0} citations found`} muted={false} />
+        <span className="overview-grid-separator overview-grid-separator-1" aria-hidden="true" />
+        <span className="overview-grid-separator overview-grid-separator-2" aria-hidden="true" />
+        <span className="overview-grid-separator overview-grid-separator-3" aria-hidden="true" />
       </div>
 
-      <div className="dashboard-table-grid">
-        <DashboardPanel title="Brand ranking" action="Real mentions only">
+      <div className="overview-analytics-row">
+        <span className="overview-grid-separator overview-grid-separator-analytics" aria-hidden="true" />
+        <DashboardPanel title="Brand Coverage Over Time" action="Me + top competitors">
+          <BrandCoverageChart rows={brandRanking} trend={displayVisibility.brandTrend || []} />
+        </DashboardPanel>
+
+        <div className="overview-insights-column">
+          <OverviewInsightCard
+            title="Your Brand Mentions"
+            value={displayVisibility.brandMentioned ?? 0}
+            subtitle={`${checkedPrompts} prompts checked`}
+            rows={[
+              [ownBrand?.name || session.selectedCompanyName, displayVisibility.brandMentioned ?? 0, hasRealData ? '+12%' : '—'],
+              ...competitorRows.slice(0, 2).map((item) => [item.name, item.mentions, `${item.coverage ?? 0}%`])
+            ]}
+          />
+          <OverviewInsightCard
+            title="Average Brand Position"
+            value={displayVisibility.averagePosition ?? 0}
+            subtitle="Position trend"
+            rows={[
+              [ownBrand?.name || session.selectedCompanyName, displayVisibility.averagePosition ?? 0, hasRealData ? '+4' : '—'],
+              ...competitorRows.slice(0, 2).map((item) => [item.name, item.position ?? 0, `${item.share ?? 0}%`])
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="dashboard-table-grid overview-table-grid">
+        <DashboardPanel title="Brand Ranking" action="All brands">
           <DashboardRankingTable rows={brandRanking} />
         </DashboardPanel>
 
-        <DashboardPanel title="Top prompts by brand mentions">
-          <DashboardPromptTable rows={topPromptsByBrand} metricLabel="My mentions" metricKey="mentions" />
+        <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
+
+        <DashboardPanel title="Top Prompts by Brand Mentions">
+          <DashboardPromptTable rows={topPromptsByBrand} metricLabel="Share" metricKey="share" />
         </DashboardPanel>
       </div>
 
-      <DashboardPanel title="Brand visibility index on AI Search" action="Coverage vs mention share">
-        <VisibilityIndex rows={brandRanking} />
-      </DashboardPanel>
-
-      <DashboardPanel title="Citations">
-        <DashboardCitationTable rows={citationsTable} />
-      </DashboardPanel>
-
-      <div className="dashboard-analytics-grid">
-        <DashboardPanel title="Domain coverage over time" action="Your domain">
-          <MiniTrendChart data={visibility.domainTrend || []} empty="No owned-domain citations yet" />
+      <div className="dashboard-table-grid overview-table-grid">
+        <DashboardPanel title="Brand Visibility index on AI Search" action="Coverage vs mention share">
+          <VisibilityIndex rows={brandRanking} />
         </DashboardPanel>
 
-        <DashboardPanel title="Domain citations">
-          <DashboardSideStat value={visibility.citations ?? 0} rows={domainCitations.slice(0, 4).map((item) => [item.domain, item.citations])} empty="No citation domains yet" />
+        <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
+
+        <DashboardPanel title="Citations">
+          <DashboardCitationTable rows={citationsTable} />
         </DashboardPanel>
       </div>
 
-      <div className="dashboard-table-grid">
-        <DashboardPanel title="Domain citations">
-          <DashboardDomainTable rows={domainCitations} />
+      <div className="dashboard-table-grid overview-table-grid overview-domain-grid">
+        <DashboardPanel title="Domain Coverage Over Time" action="Your domain">
+          <DomainCoverageChart data={displayVisibility.domainTrend || []} brandName={session.selectedCompanyName} />
         </DashboardPanel>
 
-        <DashboardPanel title="Top prompts by website citations">
+        <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
+
+        <DashboardPanel title="Domain Citations">
+          <DomainCitationsCard rows={domainCitations} />
+        </DashboardPanel>
+      </div>
+
+      <div className="dashboard-table-grid overview-table-grid">
+        <DashboardPanel title="Top Prompts by Website Citations">
+          <DashboardPromptTable rows={topPromptsByCitations} metricLabel="Citations" metricKey="citations" />
+        </DashboardPanel>
+
+        <span className="overview-grid-separator overview-grid-separator-table" aria-hidden="true" />
+
+        <DashboardPanel title="Citation Opportunities">
           <DashboardPromptTable rows={topPromptsByCitations} metricLabel="Citations" metricKey="citations" />
         </DashboardPanel>
       </div>
+    </section>
+  );
+}
 
-      <DashboardPanel title="Hummingbird optimization layer" action="Our intelligence">
-        <div className="dashboard-insight-grid">
-          {(visibility.insights || []).map((insight) => (
-            <article className="dashboard-insight-card" key={insight.title}>
-              <span>{insight.priority}</span>
-              <h3>{insight.title}</h3>
-              <p>{insight.text}</p>
-            </article>
+function BrandCoverageChart({ rows, trend }) {
+  const allRows = rows || [];
+  const ownBrand = allRows.find((row) => row.type === 'own');
+  const brands = [
+    ...(ownBrand ? [ownBrand] : []),
+    ...allRows.filter((row) => row.type !== 'own').slice(0, ownBrand ? 4 : 5)
+  ];
+  const colors = ['#ff1010', '#4b16ff', '#00bf16', '#f80693', '#14c8b8'];
+  const dates = (trend || []).length ? trend.slice(-7).map((item) => item.date) : ['24 Jun', '25 Jun', '26 Jun', '27 Jun', '28 Jun', '29 Jun', '30 Jun'];
+
+  return (
+    <div className="brand-coverage-chart">
+      <div className="brand-chart-y-axis" aria-hidden="true">
+        {[40, 30, 20, 10, 0].map((value) => <span key={value}>{value}</span>)}
+      </div>
+      <span className="brand-chart-y-label" aria-hidden="true">Brand Coverage %</span>
+      <div className="brand-chart-plot">
+        {dates.map((date, index) => {
+          const segments = brands.map((item, brandIndex) => ({
+            ...item,
+            color: colors[brandIndex % colors.length],
+            value: Math.max(0, Number(item.coverage || item.share || item.mentions || 0))
+          }));
+          const total = segments.reduce((sum, item) => sum + item.value, 0);
+          return (
+            <div className="brand-chart-column" key={date}>
+              <div className="brand-chart-stack" style={{ height: `${Math.max(4, Math.min(92, total * 2.1))}%` }}>
+                {segments.map((item) => {
+                  const segmentHeight = total ? Math.max(4, (item.value / total) * 100) : 0;
+                  return (
+                    <span
+                      key={`${date}-${item.name}`}
+                      style={{ height: `${segmentHeight}%`, borderTopColor: item.color }}
+                      title={`${item.name}: ${item.value}%`}
+                    />
+                  );
+                })}
+              </div>
+              {segments.length ? (
+                <div className="brand-chart-tooltip" aria-hidden="true">
+                  {segments.map((item) => (
+                    <p key={item.name}><i style={{ background: item.color }} />{item.name}<b>{item.value}%</b></p>
+                  ))}
+                </div>
+              ) : null}
+              <small>{date}</small>
+            </div>
+          );
+        })}
+        {!brands.length ? <DashboardEmptyOverlay title="No coverage data yet" text="Run prompt checks to build this chart from saved AI responses." /> : null}
+      </div>
+      {brands.length ? (
+        <div className="brand-chart-legend">
+          {brands.map((item, index) => (
+            <span key={item.name}><i style={{ background: colors[index % colors.length] }} />{item.name}</span>
           ))}
         </div>
-      </DashboardPanel>
+      ) : null}
+    </div>
+  );
+}
 
-      <div className="dashboard-body-grid compact">
-        <article className="dashboard-card">
-          <div className="dashboard-card-head">
-            <div>
-              <p className="eyebrow">Setup progress</p>
-              <h2>{progress.percentage}% complete</h2>
-            </div>
-            <span className="pill">{progress.missing.length ? 'In progress' : 'Ready'}</span>
-          </div>
-          <div className="progress-bar"><span style={{ width: `${progress.percentage}%` }} /></div>
-          {progress.missing.length ? <button type="button" onClick={() => goTo('settings')}>Complete setup</button> : null}
-        </article>
-
-        <article className="dashboard-card">
-          <div className="dashboard-card-head">
-            <div>
-              <p className="eyebrow">Business Analysis</p>
-              <h2>{analysis?.analysis_status || 'No analysis yet'}</h2>
-            </div>
-            <span className="soft-pill">{analysis ? displayAiSource(analysis.source_type) : 'No source'}</span>
-          </div>
-          <p className="dashboard-summary-text">{analysis?.business_summary || 'Generate a business analysis first. The dashboard will use saved database results only.'}</p>
-          <button type="button" onClick={() => goTo('business-analysis')}>View analysis</button>
-        </article>
+function OverviewInsightCard({ title, value, subtitle, rows }) {
+  return (
+    <article className="overview-insight-card">
+      <div className="overview-insight-head">
+        <div>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
+        </div>
+        <strong>{value}</strong>
       </div>
-    </section>
+      <div className="overview-insight-list">
+        {(rows || []).slice(0, 3).map(([name, count, delta]) => (
+          <p key={`${title}-${name}`}>
+            <LogoChip name={name} />
+            <span>{name}</span>
+            <b>{count}</b>
+            <em>{delta}</em>
+          </p>
+        ))}
+      </div>
+    </article>
   );
 }
 
@@ -197,6 +297,116 @@ function MiniTrendChart({ data, empty }) {
   );
 }
 
+function DomainCoverageChart({ data, brandName }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
+  const points = data?.length ? data.slice(0, 7) : [];
+  const max = Math.max(...points.map((item) => Number(item.value || 0)), 1);
+  const width = 760;
+  const height = 260;
+  const padLeft = 62;
+  const padRight = 20;
+  const padY = 24;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padY * 2;
+  const maxLimit = Math.ceil(max / 10) * 10;
+  const ticks = [];
+  for (let i = maxLimit; i >= 0; i -= 10) {
+    ticks.push(i);
+  }
+  const coordinates = points.map((point, index) => {
+    const x = padLeft + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW);
+    const y = padY + plotH - (Number(point.value || 0) / maxLimit) * plotH;
+    return { ...point, x, y };
+  });
+  const line = coordinates.map((point) => `${point.x},${point.y}`).join(' ');
+  const focusIndex = hoverIndex !== null ? hoverIndex : (coordinates.length ? coordinates.length - 1 : 0);
+  const focus = coordinates[focusIndex];
+
+  return (
+    <div className="domain-coverage-chart">
+      {points.length ? (
+        <>
+          <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Domain coverage over time">
+            {ticks.map((tick) => {
+              const y = padY + plotH - (tick / maxLimit) * plotH;
+              return <g key={tick}><line x1={0} x2={width} y1={y} y2={y} /><text x={18} y={y + 4}>{tick}</text></g>;
+            })}
+            {coordinates.map((point) => <line key={`v-${point.date}`} className="domain-grid-vertical" x1={point.x} x2={point.x} y1={0} y2={height} />)}
+            <polyline className="domain-shadow-line" points={line} />
+            <polyline className="domain-main-line" points={line} />
+            {focus ? (
+              <g className="domain-focus-point">
+                <line x1={focus.x} x2={focus.x} y1={0} y2={height} />
+                <circle cx={focus.x} cy={focus.y} r="12" />
+                <circle cx={focus.x} cy={focus.y} r="6" />
+                <foreignObject x={focus.x - 42} y={focus.y - 44} width="92" height="28">
+                  <div className="domain-tooltip">{brandName || 'Brand'} <b>{focus.value}</b></div>
+                </foreignObject>
+              </g>
+            ) : null}
+            {coordinates.map((point, idx) => {
+              const colW = plotW / (points.length - 1 || 1);
+              const rectX = point.x - colW / 2;
+              return (
+                <rect
+                  key={`hover-${point.date}`}
+                  x={rectX}
+                  y={0}
+                  width={colW}
+                  height={height}
+                  fill="transparent"
+                  style={{ cursor: 'pointer' }}
+                  onMouseEnter={() => setHoverIndex(idx)}
+                  onMouseLeave={() => setHoverIndex(null)}
+                />
+              );
+            })}
+          </svg>
+          <div className="domain-chart-footer" style={{ position: 'relative', height: '24px', padding: 0 }}>
+            {coordinates.map((point) => (
+              <small
+                className={point === focus ? 'active' : ''}
+                key={point.date}
+                style={{
+                  position: 'absolute',
+                  left: `${(point.x / width) * 100}%`,
+                  transform: 'translateX(-50%)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {point.date}
+              </small>
+            ))}
+          </div>
+        </>
+      ) : (
+        <DashboardEmptyBlock title="No domain coverage yet" text="Run prompt checks to populate domain citation trend data." />
+      )}
+    </div>
+  );
+}
+
+function DomainCitationsCard({ rows }) {
+  const validRows = (rows || []).filter((row) => row.domain && row.domain.includes('.') && !row.domain.includes(' '));
+  const total = validRows.reduce((sum, item) => sum + Number(item.citations || 0), 0);
+  if (!validRows.length) return <DashboardEmptyBlock title="No domain citations yet" text="Domain citation data appears after prompt checks save citation URLs." />;
+
+  return (
+    <div className="domain-citations-card">
+      <div className="domain-citations-total"><strong>{total}</strong><span>Citations</span></div>
+      <div className="domain-citations-list">
+        {validRows.slice(0, 4).map((row) => (
+          <p key={row.domain}>
+            <LogoChip name={row.domain} />
+            <span>{row.domain}</span>
+            <b>{row.citations}</b>
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DashboardSideStat({ value, rows, empty }) {
   return (
     <div className="dashboard-side-stat">
@@ -212,13 +422,14 @@ function DashboardRankingTable({ rows }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No ranking yet" text="Brand ranking appears after prompts are checked against an AI provider." />;
 
   return (
-    <table className="dashboard-data-table">
-      <thead><tr><th>#</th><th>Brand</th><th>Mentions</th><th>Coverage</th><th>Share</th></tr></thead>
+    <table className="dashboard-data-table overview-data-table">
+      <thead><tr><th>#</th><th>Brand</th><th>Sentiment</th><th>Mentions</th><th>Coverage</th><th>Share</th></tr></thead>
       <tbody>
         {rows.slice(0, 10).map((row, index) => (
           <tr key={`${row.name}-${index}`}>
             <td>{index + 1}</td>
-            <td><span className={row.type === 'own' ? 'own-brand-dot' : 'competitor-dot'} />{row.name}</td>
+            <td className="overview-brand-cell"><LogoChip name={row.name} /><span>{row.name}</span></td>
+            <td><span className={`overview-sentiment-pill ${row.mentions ? 'positive' : 'neutral'}`}>{row.mentions ? `+${row.mentions}` : 'N/A'}</span></td>
             <td>{row.mentions}</td>
             <td>{row.coverage}%</td>
             <td>{row.share}%</td>
@@ -233,18 +444,24 @@ function DashboardPromptTable({ rows, metricLabel, metricKey }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No prompt data yet" text="Prompt rankings appear after AI response checks are saved." />;
 
   return (
-    <table className="dashboard-data-table">
-      <thead><tr><th>Rank</th><th>Prompt</th><th>{metricLabel}</th></tr></thead>
-      <tbody>
-        {rows.slice(0, 10).map((row, index) => (
-          <tr key={row.id || index}>
-            <td>{index + 1}</td>
-            <td>{row.prompt}</td>
-            <td>{row[metricKey] ?? 0}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table className="dashboard-data-table overview-data-table">
+        <thead><tr><th>Rank</th><th>Prompt</th><th>{metricLabel}</th></tr></thead>
+        <tbody>
+          {rows.slice(0, 10).map((row, index) => {
+            const value = row[metricKey] ?? row.share ?? row.coverage ?? row.mentions ?? 0;
+            return (
+              <tr key={row.id || index}>
+                <td>{index + 1}</td>
+                <td>{row.prompt}</td>
+                <td>{metricLabel.toLowerCase().includes('share') ? `${value}%` : value}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <button type="button" className="overview-table-report-button">View Full Report</button>
+    </>
   );
 }
 
@@ -252,19 +469,22 @@ function DashboardCitationTable({ rows }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No citations yet" text="Citation tables fill when checked prompts return recommended source pages." />;
 
   return (
-    <table className="dashboard-data-table">
-      <thead><tr><th>Rank</th><th>URL</th><th>Citation share</th><th>Citations</th></tr></thead>
-      <tbody>
-        {rows.slice(0, 10).map((row, index) => (
-          <tr key={`${row.url}-${index}`}>
-            <td>{index + 1}</td>
-            <td className="url-cell">{row.url}</td>
-            <td>{row.share}%</td>
-            <td>{row.citations}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table className="dashboard-data-table overview-data-table">
+        <thead><tr><th>Rank</th><th>URL</th><th>Citation share</th><th>Citation</th></tr></thead>
+        <tbody>
+          {rows.slice(0, 10).map((row, index) => (
+            <tr key={`${row.url}-${index}`}>
+              <td>{index + 1}</td>
+              <td className="url-cell">{row.url}</td>
+              <td>{row.share}%</td>
+              <td>{row.citations}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button type="button" className="overview-table-report-button">View Full Report</button>
+    </>
   );
 }
 
@@ -272,40 +492,46 @@ function DashboardDomainTable({ rows }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No domain citations yet" text="Domain citation data appears after prompt checks save citation URLs." />;
 
   return (
-    <table className="dashboard-data-table">
-      <thead><tr><th>Rank</th><th>Domain</th><th>Share</th><th>Citations</th></tr></thead>
-      <tbody>
-        {rows.slice(0, 10).map((row, index) => (
-          <tr key={`${row.domain}-${index}`}>
-            <td>{index + 1}</td>
-            <td>{row.domain}</td>
-            <td>{row.share}%</td>
-            <td>{row.citations}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table className="dashboard-data-table overview-data-table">
+        <thead><tr><th>Rank</th><th>Domain</th><th>Share</th><th>Citations</th></tr></thead>
+        <tbody>
+          {rows.slice(0, 10).map((row, index) => (
+            <tr key={`${row.domain}-${index}`}>
+              <td>{index + 1}</td>
+              <td>{row.domain}</td>
+              <td>{row.share}%</td>
+              <td>{row.citations}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button type="button" className="overview-table-report-button">View Full Report</button>
+    </>
   );
 }
 
 function VisibilityIndex({ rows }) {
-  const plotted = (rows || []).slice(0, 10);
+  const plotted = (rows || []).slice(0, 8);
+  const max = Math.max(...plotted.map((row) => Number(row.coverage || row.share || row.mentions || 0)), 1);
 
   return (
     <div className={`visibility-index ${plotted.length ? '' : 'is-empty'}`}>
-      <span className="axis horizontal" />
-      <span className="axis vertical" />
-      {plotted.map((row) => (
-        <div
-          className={`visibility-dot ${row.type === 'own' ? 'own' : ''}`}
-          key={row.name}
-          style={{ left: `${Math.min(92, Math.max(4, row.coverage))}%`, bottom: `${Math.min(88, Math.max(8, row.share))}%` }}
-          title={`${row.name}: ${row.coverage}% coverage, ${row.share}% share`}
-        >
-          <LogoChip name={row.name} />
-          <small>{row.name}</small>
-        </div>
-      ))}
+      {plotted.length ? <div className="visibility-index-date">23 June 2026</div> : null}
+      {plotted.map((row, index) => {
+        const value = Number(row.coverage || row.share || row.mentions || 0);
+        const width = Math.max(18, Math.min(94, (value / max) * 92));
+        return (
+          <div className="visibility-rank-row" key={`${row.name}-${index}`}>
+            <div className="visibility-rank-track">
+              <span className="visibility-rank-fill" style={{ width: `${width}%` }}>
+                <span className="visibility-rank-label"><i />{row.name}</span>
+                <b>{index + 1}</b>
+              </span>
+            </div>
+          </div>
+        );
+      })}
       {!plotted.length ? <DashboardEmptyOverlay title="No visibility index yet" text="Run prompt checks to map brand coverage vs mention share." /> : null}
     </div>
   );
@@ -320,13 +546,33 @@ function DashboardEmptyOverlay({ title, text }) {
   );
 }
 
-function DashboardKpi({ icon, title, value, helper, muted = false }) {
+const kpiAssets = {
+  'ai-visibility': {
+    bg: aiVisibilityBg,
+    icon: aiVisibilityIcon
+  },
+  'share-of-voice': {
+    bg: shareOfVoiceBg,
+    icon: shareOfVoiceIcon
+  },
+  'citation-coverage': {
+    bg: citationCoverageBg,
+    icon: citationCoverageIcon
+  }
+};
+
+function DashboardKpi({ variant, title, value, helper, muted = false }) {
+  const asset = kpiAssets[variant] || kpiAssets['ai-visibility'];
+
   return (
-    <article className={`dashboard-kpi-card ${muted ? 'muted-card' : ''}`}>
-      <span><SettingsIcon name={icon} /></span>
+    <article className={`dashboard-kpi-card overview-kpi-card overview-kpi-card-${variant} ${muted ? 'muted-card' : ''}`}>
+      <img className="overview-kpi-icon-img" src={asset.icon} alt="" aria-hidden="true" />
       <p>{title}</p>
       <strong>{value}</strong>
-      <small>{helper}</small>
+      <img className={`overview-kpi-bg-img ${variant}`} src={asset.bg} alt="" aria-hidden="true" />
+      <div className="overview-kpi-foot">
+        <small>{helper}</small>
+      </div>
     </article>
   );
 }

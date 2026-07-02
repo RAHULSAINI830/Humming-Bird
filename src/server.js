@@ -39,6 +39,8 @@ const {
   replaceCompanyPrompts,
   upsertCompanyCompetitors,
   updatePromptVisibility,
+  listPromptVisibilityRuns,
+  listPromptVisibilitySnapshots,
   upsertGoogleConnection,
   getGoogleConnection,
   updateGoogleConnectionTokens,
@@ -732,8 +734,9 @@ function topEntries(map, limit = 10) {
     .slice(0, limit);
 }
 
-function dashboardVisibilitySummary(prompts, company) {
+function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) {
   const enriched = enrichPrompts(prompts);
+  const snapshotRows = visibilitySnapshots.length ? enrichPrompts(visibilitySnapshots) : [];
   const providerDefinitions = [
     ['gemini', 'Hummingbird AI', 'gemini_response_summary'],
     ['chatgpt', 'ChatGPT', 'chatgpt_response_summary'],
@@ -831,6 +834,27 @@ function dashboardVisibilitySummary(prompts, company) {
     }))
     .sort((a, b) => b.citations - a.citations || a.order - b.order)
     .slice(0, 10);
+  if (snapshotRows.length) {
+    brandTrendMap.clear();
+    domainTrendMap.clear();
+
+    snapshotRows.forEach((snapshot) => {
+      const date = String(snapshot.checked_at || snapshot.created_at || '').slice(0, 10) || 'Unknown';
+
+      if (snapshot.brand_mentioned) {
+        incrementMap(brandTrendMap, date);
+      }
+
+      snapshot.recommended_citations_parsed.forEach((citation) => {
+        const domain = hostnameFromUrl(citation.url || citation.source_owner);
+
+        if (companyDomain && domain && domain.toLowerCase() === companyDomain.toLowerCase()) {
+          incrementMap(domainTrendMap, date);
+        }
+      });
+    });
+  }
+
   const trendDates = Array.from(new Set([...brandTrendMap.keys(), ...domainTrendMap.keys()])).sort();
   const brandTrend = trendDates.map((date) => ({ date, value: brandTrendMap.get(date) || 0 }));
   const domainTrend = trendDates.map((date) => ({ date, value: domainTrendMap.get(date) || 0 }));
@@ -2045,8 +2069,9 @@ function handleDashboard(req, res) {
   const latestAnalysis = getLatestBusinessAnalysis(access.company_id);
   const completedAnalysis = getLatestCompletedBusinessAnalysis(access.company_id);
   const prompts = listCompanyPrompts(access.company_id);
+  const visibilitySnapshots = listPromptVisibilitySnapshots(access.company_id);
   const competitors = listCompanyCompetitors(access.company_id);
-  const visibilitySummary = dashboardVisibilitySummary(prompts, access);
+  const visibilitySummary = dashboardVisibilitySummary(prompts, access, visibilitySnapshots);
 
   return sendJson(res, {
     session: sessionPayload(session),
@@ -2172,7 +2197,10 @@ async function handleSetupRunChecks(req, res) {
 
   try {
     const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis);
-    updatePromptVisibility(companyId, visibilityResults);
+    updatePromptVisibility(companyId, visibilityResults, {
+      runType: 'setup-check',
+      sourceType: 'hummingbird-ai'
+    });
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
@@ -2191,12 +2219,34 @@ async function refreshPromptChecksForCompany(companyId) {
   }
 
   const visibilityResults = await AIService.analyzePromptVisibility(access, prompts, competitors, analysis);
-  updatePromptVisibility(companyId, visibilityResults);
+  updatePromptVisibility(companyId, visibilityResults, {
+    runType: 'daily-refresh',
+    sourceType: 'hummingbird-ai'
+  });
 
   return {
     skipped: false,
     checkedPrompts: visibilityResults.length,
     provider: 'gemini'
+  };
+}
+
+function settingsPayload(context) {
+  const prompts = listCompanyPrompts(context.access.company_id);
+
+  return {
+    session: sessionPayload(context.session),
+    company: context.access,
+    setupProgress: setupProgress(context.access),
+    users: listCompanyUsers(context.access.company_id),
+    canManage: USER_MANAGEMENT_ROLES.includes(context.access.role_name),
+    canRefreshVisibility: CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name),
+    assignableRoles: getAssignableUserRoles(context.access.role_name),
+    statuses: COMPANY_ACCESS_STATUSES,
+    analysis: getLatestBusinessAnalysis(context.access.company_id) || null,
+    promptsSummary: promptSummary(prompts),
+    competitors: listCompanyCompetitors(context.access.company_id),
+    visibilityRuns: listPromptVisibilityRuns(context.access.company_id, 8)
   };
 }
 
@@ -2358,7 +2408,10 @@ async function handleGenerateSetup(req, res) {
 
     if (prompts.length && summary.checked === 0) {
       const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis);
-      updatePromptVisibility(companyId, visibilityResults);
+      updatePromptVisibility(companyId, visibilityResults, {
+        runType: 'setup-check',
+        sourceType: 'hummingbird-ai'
+      });
     }
 
     return sendJson(res, setupPipelineStatus(companyId));
@@ -2623,18 +2676,54 @@ function handleSettings(req, res) {
     return null;
   }
 
-  return sendJson(res, {
-    session: sessionPayload(context.session),
-    company: context.access,
-    setupProgress: setupProgress(context.access),
-    users: listCompanyUsers(context.access.company_id),
-    canManage: USER_MANAGEMENT_ROLES.includes(context.access.role_name),
-    assignableRoles: getAssignableUserRoles(context.access.role_name),
-    statuses: COMPANY_ACCESS_STATUSES,
-    analysis: getLatestBusinessAnalysis(context.access.company_id) || null,
-    promptsSummary: promptSummary(listCompanyPrompts(context.access.company_id)),
-    competitors: listCompanyCompetitors(context.access.company_id)
-  });
+  return sendJson(res, settingsPayload(context));
+}
+
+async function handleSettingsRefreshVisibility(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  if (!CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const companyId = context.access.company_id;
+  const analysis = getLatestCompletedBusinessAnalysis(companyId);
+  const competitors = listCompanyCompetitors(companyId);
+  const prompts = listCompanyPrompts(companyId).filter((prompt) => prompt.status === 'active');
+
+  if (!analysis) {
+    return sendJson(res, { error: 'Generate business analysis before refreshing AI responses.' }, 409);
+  }
+
+  if (!competitors.length) {
+    return sendJson(res, { error: 'Add or confirm competitors before refreshing AI responses.' }, 409);
+  }
+
+  if (!prompts.length) {
+    return sendJson(res, { error: 'Add or confirm prompts before refreshing AI responses.' }, 409);
+  }
+
+  try {
+    const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis);
+    const run = updatePromptVisibility(companyId, visibilityResults, {
+      runType: 'manual-refresh',
+      sourceType: 'hummingbird-ai'
+    });
+
+    return sendJson(res, {
+      ok: true,
+      message: `Regenerated ${run.promptsChecked || visibilityResults.length} AI responses.`,
+      refreshRun: run,
+      settings: settingsPayload(context)
+    });
+  } catch (error) {
+    console.error(error);
+    return sendJson(res, aiErrorResponse(error, 'AI response regeneration failed. Please retry.'), 500);
+  }
 }
 
 function handleUsers(req, res) {
@@ -3028,6 +3117,10 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/settings') {
       return handleSettings(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/settings/refresh-visibility') {
+      return handleSettingsRefreshVisibility(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/users') {

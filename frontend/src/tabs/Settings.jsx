@@ -1,17 +1,42 @@
+import { useState } from 'react';
 import { EmptyInline, LogoChip, PageHeader, SettingsIcon } from '../components/common';
 import Users from './Users';
 
-export default function Settings({ data, onChange, workspace }) {
+export default function Settings({ data, onChange, onRefreshVisibility, workspace }) {
   const company = data?.company;
   const users = data?.users || [];
   const progress = data?.setupProgress || {};
   const promptsSummary = data?.promptsSummary || {};
   const competitors = data?.competitors || [];
+  const visibilityRuns = data?.visibilityRuns || [];
   const analysisStatus = data?.analysis?.analysis_status || 'Not started';
   const healthProgress = company?.onboarding_completed ? 100 : progress.percentage || 0;
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState('');
+  const [refreshError, setRefreshError] = useState('');
 
   if (!data) {
     return <EmptyInline title="Loading settings" text="Fetching company, user, and workspace data." />;
+  }
+
+  async function handleRefresh() {
+    if (!onRefreshVisibility || refreshing) return;
+
+    setRefreshing(true);
+    setRefreshMessage('');
+    setRefreshError('');
+
+    try {
+      const result = await onRefreshVisibility();
+      setRefreshMessage(result?.message || 'AI responses regenerated and saved.');
+      if (result?.settings) {
+        onChange?.(result.settings);
+      }
+    } catch (error) {
+      setRefreshError(error.message || 'AI response regeneration failed.');
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   return (
@@ -85,9 +110,67 @@ export default function Settings({ data, onChange, workspace }) {
         </article>
       </div>
 
+      <article className="settings-card settings-refresh-card">
+        <div className="settings-card-head">
+          <div>
+            <p className="eyebrow">Visibility Refresh</p>
+            <h2>Regenerate AI responses</h2>
+            <p>
+              Re-run the same saved prompts against the same competitor list, save a new response snapshot,
+              and keep previous runs for comparison.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="settings-refresh-button"
+            onClick={handleRefresh}
+            disabled={refreshing || !data?.canRefreshVisibility}
+          >
+            {refreshing ? 'Regenerating…' : 'Regenerate responses'}
+          </button>
+        </div>
+        {refreshError ? <div className="notice error">{refreshError}</div> : null}
+        {refreshMessage ? <div className="success-notice">{refreshMessage}</div> : null}
+        <div className="settings-refresh-meta">
+          <span>{promptsSummary.total ?? 0} prompts saved</span>
+          <span>{competitors.length} competitors saved</span>
+          <span>{visibilityRuns.length ? `Last run ${formatRunDate(visibilityRuns[0].created_at)}` : 'No refresh history yet'}</span>
+        </div>
+        <div className="settings-run-list">
+          {visibilityRuns.slice(0, 5).map((run) => (
+            <div className="settings-run-row" key={run.id}>
+              <span><SettingsIcon name="sparkles" /></span>
+              <div>
+                <strong>{run.run_type === 'daily-refresh' ? 'Daily refresh' : run.run_type === 'setup-check' ? 'Initial check' : 'Manual refresh'}</strong>
+                <small>{formatRunDate(run.created_at)} · {run.prompts_checked || 0} prompts checked</small>
+              </div>
+              <em>{run.status}</em>
+            </div>
+          ))}
+          {!visibilityRuns.length ? (
+            <EmptyInline title="No response snapshots yet" text="Run a refresh to create the first saved comparison point." />
+          ) : null}
+        </div>
+      </article>
+
       <Users data={data} onChange={onChange} embedded />
     </section>
   );
+}
+
+function formatRunDate(value) {
+  if (!value) return 'Not available';
+
+  try {
+    return new Intl.DateTimeFormat('en', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(new Date(value.replace(' ', 'T')));
+  } catch {
+    return value;
+  }
 }
 
 function SettingsMetric({ icon, title, value, helper }) {
