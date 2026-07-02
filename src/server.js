@@ -350,6 +350,23 @@ function aiErrorResponse(error, fallbackMessage) {
   };
 }
 
+function aiErrorStatus(error) {
+  const code = String(error?.message || error?.code || '');
+  const providerStatus = Number(error?.providerStatus || 0);
+
+  if (providerStatus === 401 || code === 'AI_AUTH_FAILED') return 401;
+  if (providerStatus === 403) return 403;
+  if (providerStatus === 408 || code === 'AI_TIMEOUT') return 504;
+  if (providerStatus === 429 || code === 'AI_RATE_LIMITED') return 429;
+  if (providerStatus >= 500 || code === 'AI_SERVER_ERROR') return 503;
+  if (code === 'AI_MISSING_KEY') return 503;
+  if (code === 'AI_INVALID_JSON') return 502;
+  if (code === 'AI_NETWORK_ERROR') return 503;
+  if (providerStatus >= 400) return 502;
+
+  return 500;
+}
+
 function notFound(res) {
   return sendJson(res, { error: 'Route not found' }, 404);
 }
@@ -2815,7 +2832,11 @@ async function handleSettingsRefreshVisibility(req, res) {
     });
   } catch (error) {
     console.error(error);
-    return sendJson(res, aiErrorResponse(error, 'AI response regeneration failed. Please retry.'), 500);
+    return sendJson(
+      res,
+      aiErrorResponse(error, 'AI response regeneration failed. Please retry.'),
+      aiErrorStatus(error)
+    );
   }
 }
 
