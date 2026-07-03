@@ -90,6 +90,7 @@ function migrate() {
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'active',
+      workspace_limit INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -474,6 +475,19 @@ function migrate() {
   ].forEach(([columnName, columnType]) => {
     if (!companyColumns.includes(columnName)) {
       db.exec(`ALTER TABLE companies ADD COLUMN ${columnName} ${columnType};`);
+    }
+  });
+
+  const userColumns = db
+    .prepare('PRAGMA table_info(users)')
+    .all()
+    .map((column) => column.name);
+
+  [
+    ['workspace_limit', 'INTEGER NOT NULL DEFAULT 1']
+  ].forEach(([columnName, columnType]) => {
+    if (!userColumns.includes(columnName)) {
+      db.exec(`ALTER TABLE users ADD COLUMN ${columnName} ${columnType};`);
     }
   });
 }
@@ -1041,6 +1055,46 @@ function removeAccessRecordById(accessId) {
   return db.prepare('DELETE FROM user_company_access WHERE id = ?').run(accessId);
 }
 
+function getUserWorkspaceCreationLimit(userId) {
+  const user = db.prepare(`
+    SELECT
+      id AS user_id,
+      COALESCE(workspace_limit, 1) AS workspace_limit
+    FROM users
+    WHERE id = ?
+  `).get(userId);
+  const ownedCount = db.prepare(`
+    SELECT COUNT(DISTINCT uca.company_id) AS count
+    FROM user_company_access uca
+    JOIN roles r ON r.id = uca.role_id
+    JOIN companies c ON c.id = uca.company_id
+    WHERE uca.user_id = ?
+      AND uca.status = 'active'
+      AND r.role_name = 'Business Owner'
+      AND c.status = 'active'
+  `).get(userId).count;
+  const limit = Math.max(0, Number(user?.workspace_limit ?? 1));
+  const used = Number(ownedCount || 0);
+
+  return {
+    user_id: userId,
+    workspace_limit: limit,
+    owned_workspaces: used,
+    remaining_workspaces: Math.max(limit - used, 0),
+    can_create_workspace: used < limit
+  };
+}
+
+function updateUserWorkspaceLimit(userId, workspaceLimit) {
+  return db.prepare(`
+    UPDATE users
+    SET
+      workspace_limit = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(workspaceLimit, userId);
+}
+
 function listAllCompaniesForDeveloper() {
   return db.prepare(`
     SELECT
@@ -1075,8 +1129,10 @@ function listAllUsersForDeveloper() {
       u.full_name,
       u.email,
       u.status AS global_status,
+      COALESCE(u.workspace_limit, 1) AS workspace_limit,
       u.created_at,
       COUNT(uca.id) AS companies_access,
+      COUNT(DISTINCT CASE WHEN r.role_name = 'Business Owner' AND uca.status = 'active' THEN uca.company_id END) AS owned_workspaces,
       COALESCE(group_concat(DISTINCT r.role_name), '') AS roles
     FROM users u
     LEFT JOIN user_company_access uca ON uca.user_id = u.id
@@ -2308,6 +2364,8 @@ module.exports = {
   getAccessRecordById,
   updateAccessRecordById,
   removeAccessRecordById,
+  getUserWorkspaceCreationLimit,
+  updateUserWorkspaceLimit,
   listAllCompaniesForDeveloper,
   listAllUsersForDeveloper,
   listWorkspaceAccessForDeveloper,

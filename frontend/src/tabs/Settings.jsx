@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { EmptyInline, LogoChip, PageHeader, SettingsIcon } from '../components/common';
+import { EmptyInline, Input, LogoChip, PageHeader, SettingsIcon, SideFormTray } from '../components/common';
 import Users from './Users';
 
-export default function Settings({ data, onChange, onRefreshVisibility, workspace }) {
+export default function Settings({ data, onChange, onRefreshVisibility, onCreateWorkspace, workspace }) {
   const company = data?.company;
   const users = data?.users || [];
   const progress = data?.setupProgress || {};
@@ -10,11 +10,17 @@ export default function Settings({ data, onChange, onRefreshVisibility, workspac
   const competitors = data?.competitors || [];
   const limits = data?.limits || {};
   const visibilityRuns = data?.visibilityRuns || [];
+  const workspaceCreation = data?.workspaceCreation || {};
   const analysisStatus = data?.analysis?.analysis_status || 'Not started';
   const healthProgress = company?.onboarding_completed ? 100 : progress.percentage || 0;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState('');
   const [refreshError, setRefreshError] = useState('');
+  const [workspaceTrayOpen, setWorkspaceTrayOpen] = useState(false);
+  const [workspaceForm, setWorkspaceForm] = useState({});
+  const [workspaceErrors, setWorkspaceErrors] = useState({});
+  const [workspaceMessage, setWorkspaceMessage] = useState('');
+  const [workspaceSubmitting, setWorkspaceSubmitting] = useState(false);
 
   if (!data) {
     return <EmptyInline title="Loading settings" text="Fetching company, user, and workspace data." />;
@@ -37,6 +43,34 @@ export default function Settings({ data, onChange, onRefreshVisibility, workspac
       setRefreshError(error.message || 'AI response regeneration failed.');
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function handleCreateWorkspace(event) {
+    event.preventDefault();
+
+    if (!onCreateWorkspace || workspaceSubmitting) return;
+
+    setWorkspaceSubmitting(true);
+    setWorkspaceErrors({});
+    setWorkspaceMessage('');
+
+    try {
+      await onCreateWorkspace({
+        companyName: workspaceForm.companyName,
+        websiteUrl: workspaceForm.websiteUrl,
+        logoUrl: workspaceForm.logoUrl
+      });
+      setWorkspaceTrayOpen(false);
+      setWorkspaceForm({});
+    } catch (error) {
+      setWorkspaceMessage(error.message || 'Workspace could not be created.');
+      setWorkspaceErrors(error.data?.errors || {});
+      if (error.data?.workspaceCreation) {
+        onChange?.({ ...data, workspaceCreation: error.data.workspaceCreation });
+      }
+    } finally {
+      setWorkspaceSubmitting(false);
     }
   }
 
@@ -71,6 +105,34 @@ export default function Settings({ data, onChange, onRefreshVisibility, workspac
         <SettingsMetric icon="building" title="Competitors" value={competitors.length} helper={limits.competitors ? `${limits.competitors.used}/${limits.competitors.limit} used` : 'Tracked companies'} />
         <SettingsMetric icon="trend" title="Analysis" value={analysisStatus} helper="Saved AI status" />
       </div>
+
+      {workspaceCreation.canManage ? (
+        <article className="settings-card settings-workspace-create-card">
+          <div className="settings-card-head">
+            <div>
+              <p className="eyebrow">Workspace Creation</p>
+              <h2>Create additional company spaces</h2>
+              <p>
+                This owner has used {workspaceCreation.owned_workspaces ?? 0} of {workspaceCreation.workspace_limit ?? 1} allowed workspaces.
+                Developer can increase this limit from Developer Admin.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="settings-refresh-button"
+              onClick={() => setWorkspaceTrayOpen(true)}
+              disabled={!workspaceCreation.can_create_workspace}
+            >
+              {workspaceCreation.can_create_workspace ? 'Create workspace' : 'Limit reached'}
+            </button>
+          </div>
+          <div className="settings-refresh-meta">
+            <span>{workspaceCreation.remaining_workspaces ?? 0} remaining</span>
+            <span>{workspaceCreation.owned_workspaces ?? 0} owned workspaces</span>
+            <span>{workspaceCreation.workspace_limit ?? 1} total limit</span>
+          </div>
+        </article>
+      ) : null}
 
       <div className="settings-body-grid">
         <article className="settings-card settings-card-wide">
@@ -155,6 +217,46 @@ export default function Settings({ data, onChange, onRefreshVisibility, workspac
       </article>
 
       <Users data={data} onChange={onChange} embedded />
+
+      <SideFormTray
+        open={workspaceTrayOpen}
+        title="Create workspace"
+        eyebrow="Business Owner"
+        onClose={() => setWorkspaceTrayOpen(false)}
+      >
+        <form className="tray-form" onSubmit={handleCreateWorkspace}>
+          <div className="limit-editor-summary">
+            <LogoChip name={workspaceForm.companyName || 'New'} url={workspaceForm.logoUrl} />
+            <div>
+              <strong>New company space</strong>
+              <small>Developer limit: {workspaceCreation.owned_workspaces ?? 0}/{workspaceCreation.workspace_limit ?? 1} used.</small>
+            </div>
+          </div>
+          {workspaceMessage ? <div className="notice">{workspaceMessage}</div> : null}
+          <Input
+            label="Company Name"
+            value={workspaceForm.companyName}
+            error={workspaceErrors.companyName}
+            onChange={(value) => setWorkspaceForm((current) => ({ ...current, companyName: value }))}
+          />
+          <Input
+            label="Website URL"
+            value={workspaceForm.websiteUrl}
+            error={workspaceErrors.websiteUrl}
+            onChange={(value) => setWorkspaceForm((current) => ({ ...current, websiteUrl: value }))}
+          />
+          <Input
+            label="Logo URL"
+            value={workspaceForm.logoUrl}
+            error={workspaceErrors.logoUrl}
+            onChange={(value) => setWorkspaceForm((current) => ({ ...current, logoUrl: value }))}
+            optional
+          />
+          <button className="primary-button" type="submit" disabled={workspaceSubmitting || !workspaceCreation.can_create_workspace}>
+            {workspaceSubmitting ? 'Creating workspace…' : 'Create workspace'}
+          </button>
+        </form>
+      </SideFormTray>
     </section>
   );
 }

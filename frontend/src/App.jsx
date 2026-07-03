@@ -316,6 +316,30 @@ function App() {
     return result;
   }
 
+  async function handleCreateWorkspace(payload) {
+    const data = await api('/api/workspaces/create', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    setSession(data);
+    setSetupStatus(null);
+    setSetupStatusLoading(false);
+    setDashboard(null);
+    setBusinessAnalysis(null);
+    setAeoRecommendations(null);
+    setPromptsData({ prompts: [], summary: null });
+    setCompetitorsData({ competitors: [] });
+    setCitationsData({ citations: [], summary: null });
+    setGeoData(null);
+    setSettingsData(null);
+    setLoadedViews({});
+    setLoadingViews({});
+    setActiveView('dashboard');
+
+    return data;
+  }
+
   if (status === 'loading') {
     return <LoadingScreen />;
   }
@@ -451,7 +475,7 @@ function App() {
             {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
-            {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} onRefreshVisibility={handleRefreshVisibilityResponses} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} onRefreshVisibility={handleRefreshVisibilityResponses} onCreateWorkspace={handleCreateWorkspace} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
             {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
           </div>
         ) : null}

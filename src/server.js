@@ -17,6 +17,8 @@ const {
   updateCompanyLimits,
   updateCompanyAutomationPolicy,
   markCompanyAutoRefreshed,
+  getUserWorkspaceCreationLimit,
+  updateUserWorkspaceLimit,
   getDeveloperCompanyAccess,
   listCompanyUsers,
   countCompanyBusinessOwners,
@@ -62,6 +64,7 @@ const {
   clearGeoSnapshots,
   completeCompanyOnboarding,
   createUserCompanyWorkspace,
+  createCompanyForBusinessOwner,
   listAllCompaniesForDeveloper,
   listAllUsersForDeveloper,
   listWorkspaceAccessForDeveloper,
@@ -2256,6 +2259,61 @@ async function handleSelectCompany(req, res) {
   return sendJson(res, sessionPayload(updatedSession));
 }
 
+async function handleCreateWorkspace(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (session.selectedRoleName !== 'Business Owner' && !session.isDeveloper) {
+    return sendJson(res, { error: 'Only Business Owners can create additional workspaces.' }, 403);
+  }
+
+  const limit = getUserWorkspaceCreationLimit(session.userId);
+
+  if (!session.isDeveloper && !limit.can_create_workspace) {
+    return sendJson(res, {
+      error: `Workspace limit reached. This owner can create up to ${limit.workspace_limit} workspace${limit.workspace_limit === 1 ? '' : 's'}. Ask a Developer to increase the limit.`,
+      workspaceCreation: limit
+    }, 409);
+  }
+
+  const body = await readJson(req);
+  const companyName = normalize(body.companyName);
+  const websiteUrl = normalize(body.websiteUrl);
+  const logoUrl = normalize(body.logoUrl);
+  const errors = {};
+
+  if (!companyName) errors.companyName = 'Company name is required.';
+  if (!websiteUrl) errors.websiteUrl = 'Website URL is required.';
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix the highlighted fields.', errors }, 422);
+  }
+
+  const companyId = createCompanyForBusinessOwner(session.userId, {
+    company_name: companyName,
+    website_url: websiteUrl,
+    logo_url: logoUrl
+  });
+  const user = getUserById(session.userId);
+  const access = session.isDeveloper
+    ? getDeveloperCompanyAccess(companyId)
+    : getUserCompanyAccess(user.id, companyId);
+  const nextSession = createSession(res, {
+    userId: user.id,
+    userFullName: user.full_name,
+    userEmail: user.email,
+    userStatus: user.status,
+    isDeveloper: userHasRole(user.id, 'Developer'),
+    workspaceCompanies: workspaceCompaniesForUser(user),
+    ...snapshotAccess(access)
+  });
+
+  return sendJson(res, sessionPayload(nextSession), 201);
+}
+
 function handleDashboard(req, res) {
   const context = requireSelectedCompany(req, res);
 
@@ -2483,6 +2541,7 @@ function companyRefreshPolicyStatus(company, now = new Date()) {
 
 function settingsPayload(context) {
   const prompts = listCompanyPrompts(context.access.company_id);
+  const workspaceCreation = getUserWorkspaceCreationLimit(context.session.userId);
 
   return {
     session: sessionPayload(context.session),
@@ -2497,6 +2556,10 @@ function settingsPayload(context) {
     promptsSummary: promptSummary(prompts),
     competitors: listCompanyCompetitors(context.access.company_id),
     limits: companyLimitPayload(context.access.company_id),
+    workspaceCreation: {
+      ...workspaceCreation,
+      canManage: context.access.role_name === 'Business Owner'
+    },
     visibilityRuns: listPromptVisibilityRuns(context.access.company_id, 8)
   };
 }
@@ -3389,6 +3452,45 @@ async function handleDeveloperUpdateCompanyAutomation(req, res) {
   });
 }
 
+async function handleDeveloperUpdateUserWorkspaceLimit(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const userId = Number(body.userId);
+  const workspaceLimit = Number(body.workspaceLimit);
+  const errors = {};
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    errors.userId = 'Select a valid user.';
+  }
+
+  if (!Number.isInteger(workspaceLimit) || workspaceLimit < 0 || workspaceLimit > 100) {
+    errors.workspaceLimit = 'Workspace limit must be between 0 and 100.';
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix workspace owner limit.', errors }, 422);
+  }
+
+  updateUserWorkspaceLimit(userId, workspaceLimit);
+
+  return sendJson(res, {
+    ok: true,
+    stats: getPlatformStats(),
+    companies: listAllCompaniesForDeveloper(),
+    users: listAllUsersForDeveloper(),
+    accessRecords: listWorkspaceAccessForDeveloper()
+  });
+}
+
 async function handleDeveloperRemoveAccess(req, res) {
   const session = requireSession(req, res);
 
@@ -3460,6 +3562,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/workspace/select') {
       return handleSelectCompany(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/workspaces/create') {
+      return handleCreateWorkspace(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/dashboard') {
@@ -3612,6 +3718,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/developer/companies/automation') {
       return handleDeveloperUpdateCompanyAutomation(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/developer/users/workspace-limit') {
+      return handleDeveloperUpdateUserWorkspaceLimit(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/developer/access/remove') {

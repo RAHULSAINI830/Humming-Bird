@@ -18,6 +18,10 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const [automationForm, setAutomationForm] = useState({});
   const [automationErrors, setAutomationErrors] = useState({});
   const [savingAutomation, setSavingAutomation] = useState(false);
+  const [workspaceLimitUser, setWorkspaceLimitUser] = useState(null);
+  const [workspaceLimitForm, setWorkspaceLimitForm] = useState({});
+  const [workspaceLimitErrors, setWorkspaceLimitErrors] = useState({});
+  const [savingWorkspaceLimit, setSavingWorkspaceLimit] = useState(false);
 
   if (!data) {
     return <EmptyInline title="Loading Developer Admin" text="Fetching platform-wide companies, users, and access records." />;
@@ -88,6 +92,14 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
     });
   }
 
+  function openWorkspaceLimitEditor(user) {
+    setWorkspaceLimitUser(user);
+    setWorkspaceLimitErrors({});
+    setWorkspaceLimitForm({
+      workspaceLimit: String(user.workspace_limit ?? 1)
+    });
+  }
+
   async function saveCompanyLimits(event) {
     event.preventDefault();
 
@@ -148,6 +160,35 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
       setAutomationErrors(error.data?.errors || {});
     } finally {
       setSavingAutomation(false);
+    }
+  }
+
+  async function saveUserWorkspaceLimit(event) {
+    event.preventDefault();
+
+    if (!workspaceLimitUser) return;
+
+    setSavingWorkspaceLimit(true);
+    setWorkspaceLimitErrors({});
+    setMessage('');
+
+    try {
+      const result = await api('/api/developer/users/workspace-limit', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: workspaceLimitUser.user_id,
+          workspaceLimit: Number(workspaceLimitForm.workspaceLimit)
+        })
+      });
+      onChange(result);
+      setMessage(`${workspaceLimitUser.full_name} workspace limit updated.`);
+      setWorkspaceLimitUser(null);
+      setWorkspaceLimitForm({});
+    } catch (error) {
+      setMessage(error.message);
+      setWorkspaceLimitErrors(error.data?.errors || {});
+    } finally {
+      setSavingWorkspaceLimit(false);
     }
   }
 
@@ -251,7 +292,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
           </div>
           <table className="dashboard-data-table developer-table">
             <thead>
-              <tr><th>User</th><th>Email</th><th>Status</th><th>Companies</th><th>Roles</th><th>Created</th></tr>
+              <tr><th>User</th><th>Email</th><th>Status</th><th>Companies</th><th>Workspace Limit</th><th>Roles</th><th>Created</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {users.map((user) => (
@@ -260,8 +301,23 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
                   <td>{user.email}</td>
                   <td><StatusBadge active={user.global_status === 'active'}>{user.global_status}</StatusBadge></td>
                   <td>{user.companies_access}</td>
+                  <td>
+                    <div className="automation-summary">
+                      <span className="soft-pill">{user.owned_workspaces ?? 0}/{user.workspace_limit ?? 1} owned</span>
+                      <small>{Math.max(Number(user.workspace_limit ?? 1) - Number(user.owned_workspaces ?? 0), 0)} remaining</small>
+                    </div>
+                  </td>
                   <td>{user.roles || 'No roles'}</td>
                   <td>{user.created_at}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="secondary-action-button"
+                      onClick={() => openWorkspaceLimitEditor(user)}
+                    >
+                      Workspace limit
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -424,6 +480,40 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
 
           <button className="primary-button" type="submit" disabled={savingAutomation}>
             {savingAutomation ? 'Saving controls…' : 'Save automation controls'}
+          </button>
+        </form>
+      </SideFormTray>
+
+      <SideFormTray
+        open={Boolean(workspaceLimitUser)}
+        title="Owner workspace limit"
+        eyebrow="Developer control"
+        onClose={() => setWorkspaceLimitUser(null)}
+      >
+        <form className="tray-form" onSubmit={saveUserWorkspaceLimit}>
+          <div className="limit-editor-summary">
+            <LogoChip name={workspaceLimitUser?.full_name || 'User'} />
+            <div>
+              <strong>{workspaceLimitUser?.full_name}</strong>
+              <small>
+                This controls how many company workspaces this user can own/create.
+                Current usage: {workspaceLimitUser?.owned_workspaces ?? 0}/{workspaceLimitUser?.workspace_limit ?? 1}.
+              </small>
+            </div>
+          </div>
+          <Input
+            label="Workspace creation limit"
+            type="number"
+            value={workspaceLimitForm.workspaceLimit}
+            error={workspaceLimitErrors.workspaceLimit}
+            onChange={(value) => setWorkspaceLimitForm((current) => ({ ...current, workspaceLimit: value }))}
+          />
+          <div className="automation-helper-card">
+            <strong>How this works</strong>
+            <p>If the limit is 1, the owner can only have their original workspace. If you set 3, they can create up to 3 company spaces owned by themselves.</p>
+          </div>
+          <button className="primary-button" type="submit" disabled={savingWorkspaceLimit}>
+            {savingWorkspaceLimit ? 'Saving workspace limit…' : 'Save workspace limit'}
           </button>
         </form>
       </SideFormTray>
