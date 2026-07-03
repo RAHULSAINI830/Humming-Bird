@@ -101,6 +101,12 @@ function migrate() {
       logo_url TEXT,
       prompt_limit INTEGER NOT NULL DEFAULT 15,
       competitor_limit INTEGER NOT NULL DEFAULT 10,
+      auto_refresh_enabled INTEGER NOT NULL DEFAULT 1,
+      refresh_interval_days INTEGER NOT NULL DEFAULT 1,
+      refresh_status TEXT NOT NULL DEFAULT 'active',
+      refresh_paused_until TEXT,
+      refresh_stop_reason TEXT,
+      last_auto_refresh_at TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -458,7 +464,13 @@ function migrate() {
     ['onboarding_completed_at', 'TEXT'],
     ['status', "TEXT NOT NULL DEFAULT 'active'"],
     ['prompt_limit', 'INTEGER NOT NULL DEFAULT 15'],
-    ['competitor_limit', 'INTEGER NOT NULL DEFAULT 10']
+    ['competitor_limit', 'INTEGER NOT NULL DEFAULT 10'],
+    ['auto_refresh_enabled', 'INTEGER NOT NULL DEFAULT 1'],
+    ['refresh_interval_days', 'INTEGER NOT NULL DEFAULT 1'],
+    ['refresh_status', "TEXT NOT NULL DEFAULT 'active'"],
+    ['refresh_paused_until', 'TEXT'],
+    ['refresh_stop_reason', 'TEXT'],
+    ['last_auto_refresh_at', 'TEXT']
   ].forEach(([columnName, columnType]) => {
     if (!companyColumns.includes(columnName)) {
       db.exec(`ALTER TABLE companies ADD COLUMN ${columnName} ${columnType};`);
@@ -716,7 +728,13 @@ function listActiveCompanies() {
       target_audience,
       onboarding_completed,
       onboarding_completed_at,
-      status
+      status,
+      COALESCE(auto_refresh_enabled, 1) AS auto_refresh_enabled,
+      COALESCE(refresh_interval_days, 1) AS refresh_interval_days,
+      COALESCE(refresh_status, 'active') AS refresh_status,
+      refresh_paused_until,
+      refresh_stop_reason,
+      last_auto_refresh_at
     FROM companies
     WHERE status = 'active'
     ORDER BY id ASC
@@ -1029,9 +1047,16 @@ function listAllCompaniesForDeveloper() {
       c.id AS company_id,
       c.company_name,
       c.website_url,
+      c.logo_url,
       c.industry,
       COALESCE(c.prompt_limit, 15) AS prompt_limit,
       COALESCE(c.competitor_limit, 10) AS competitor_limit,
+      COALESCE(c.auto_refresh_enabled, 1) AS auto_refresh_enabled,
+      COALESCE(c.refresh_interval_days, 1) AS refresh_interval_days,
+      COALESCE(c.refresh_status, 'active') AS refresh_status,
+      c.refresh_paused_until,
+      c.refresh_stop_reason,
+      c.last_auto_refresh_at,
       c.onboarding_completed,
       c.created_at,
       c.status,
@@ -1126,6 +1151,37 @@ function setCompanyStatus(companyId, status) {
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(status, companyId);
+}
+
+function updateCompanyAutomationPolicy(companyId, policy) {
+  return db.prepare(`
+    UPDATE companies
+    SET
+      auto_refresh_enabled = ?,
+      refresh_interval_days = ?,
+      refresh_status = ?,
+      refresh_paused_until = ?,
+      refresh_stop_reason = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    policy.autoRefreshEnabled ? 1 : 0,
+    policy.refreshIntervalDays,
+    policy.refreshStatus,
+    policy.refreshPausedUntil || null,
+    policy.refreshStopReason || null,
+    companyId
+  );
+}
+
+function markCompanyAutoRefreshed(companyId) {
+  return db.prepare(`
+    UPDATE companies
+    SET
+      last_auto_refresh_at = CURRENT_TIMESTAMP,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(companyId);
 }
 
 function deleteCompany(companyId) {
@@ -2238,6 +2294,8 @@ module.exports = {
   listActiveCompanies,
   getCompanyLimits,
   updateCompanyLimits,
+  updateCompanyAutomationPolicy,
+  markCompanyAutoRefreshed,
   getDeveloperCompanyAccess,
   getRoleByName,
   listCompanyUsers,

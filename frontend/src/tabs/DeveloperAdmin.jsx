@@ -14,6 +14,10 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const [limitForm, setLimitForm] = useState({});
   const [limitErrors, setLimitErrors] = useState({});
   const [savingLimits, setSavingLimits] = useState(false);
+  const [automationCompany, setAutomationCompany] = useState(null);
+  const [automationForm, setAutomationForm] = useState({});
+  const [automationErrors, setAutomationErrors] = useState({});
+  const [savingAutomation, setSavingAutomation] = useState(false);
 
   if (!data) {
     return <EmptyInline title="Loading Developer Admin" text="Fetching platform-wide companies, users, and access records." />;
@@ -72,6 +76,18 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
     });
   }
 
+  function openAutomationEditor(company) {
+    setAutomationCompany(company);
+    setAutomationErrors({});
+    setAutomationForm({
+      autoRefreshEnabled: Number(company.auto_refresh_enabled ?? 1) === 1,
+      refreshIntervalDays: String(company.refresh_interval_days ?? 1),
+      refreshStatus: company.refresh_status || 'active',
+      refreshPausedUntil: company.refresh_paused_until ? String(company.refresh_paused_until).slice(0, 10) : '',
+      refreshStopReason: company.refresh_stop_reason || ''
+    });
+  }
+
   async function saveCompanyLimits(event) {
     event.preventDefault();
 
@@ -99,6 +115,39 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
       setLimitErrors(error.data?.errors || {});
     } finally {
       setSavingLimits(false);
+    }
+  }
+
+  async function saveCompanyAutomation(event) {
+    event.preventDefault();
+
+    if (!automationCompany) return;
+
+    setSavingAutomation(true);
+    setAutomationErrors({});
+    setMessage('');
+
+    try {
+      const result = await api('/api/developer/companies/automation', {
+        method: 'POST',
+        body: JSON.stringify({
+          companyId: automationCompany.company_id,
+          autoRefreshEnabled: Boolean(automationForm.autoRefreshEnabled),
+          refreshIntervalDays: Number(automationForm.refreshIntervalDays),
+          refreshStatus: automationForm.refreshStatus,
+          refreshPausedUntil: automationForm.refreshPausedUntil,
+          refreshStopReason: automationForm.refreshStopReason
+        })
+      });
+      onChange(result);
+      setMessage(`${automationCompany.company_name} automation controls updated.`);
+      setAutomationCompany(null);
+      setAutomationForm({});
+    } catch (error) {
+      setMessage(error.message);
+      setAutomationErrors(error.data?.errors || {});
+    } finally {
+      setSavingAutomation(false);
     }
   }
 
@@ -136,7 +185,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
         </div>
         <table className="dashboard-data-table developer-table">
           <thead>
-            <tr><th>Company</th><th>Website</th><th>Industry</th><th>Prompts</th><th>Competitors</th><th>Onboarding</th><th>Users</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+            <tr><th>Company</th><th>Website</th><th>Industry</th><th>Prompts</th><th>Competitors</th><th>Automation</th><th>Onboarding</th><th>Users</th><th>Status</th><th>Created</th><th>Actions</th></tr>
           </thead>
           <tbody>
             {companies.map((company) => (
@@ -146,6 +195,14 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
                 <td>{company.industry || 'Not added'}</td>
                 <td><span className="soft-pill">{company.prompt_limit ?? 15} max</span></td>
                 <td><span className="soft-pill">{company.competitor_limit ?? 10} max</span></td>
+                <td>
+                  <div className="automation-summary">
+                    <StatusBadge active={Number(company.auto_refresh_enabled ?? 1) === 1 && company.refresh_status === 'active'}>
+                      {automationLabel(company)}
+                    </StatusBadge>
+                    <small>{automationMeta(company)}</small>
+                  </div>
+                </td>
                 <td><StatusBadge active={Boolean(company.onboarding_completed)}>{company.onboarding_completed ? 'Completed' : 'Incomplete'}</StatusBadge></td>
                 <td>{company.users_count}</td>
                 <td><StatusBadge active={company.status === 'active'}>{company.status}</StatusBadge></td>
@@ -158,6 +215,13 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
                       onClick={() => openLimitEditor(company)}
                     >
                       Limits
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-action-button"
+                      onClick={() => openAutomationEditor(company)}
+                    >
+                      Automation
                     </button>
                     <button
                       type="button"
@@ -274,6 +338,118 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
           </button>
         </form>
       </SideFormTray>
+
+      <SideFormTray
+        open={Boolean(automationCompany)}
+        title="Automation controls"
+        eyebrow="Developer control"
+        onClose={() => setAutomationCompany(null)}
+      >
+        <form className="tray-form" onSubmit={saveCompanyAutomation}>
+          <div className="limit-editor-summary">
+            <LogoChip name={automationCompany?.company_name || 'Company'} url={automationCompany?.logo_url || automationCompany?.website_url} />
+            <div>
+              <strong>{automationCompany?.company_name}</strong>
+              <small>Control when Hummingbird refreshes prompts, AI responses, and saved visibility data.</small>
+            </div>
+          </div>
+
+          <label className="field checkbox-field">
+            <span>Auto refresh <small>Developer controlled</small></span>
+            <span className="input-shell checkbox-shell">
+              <input
+                type="checkbox"
+                checked={Boolean(automationForm.autoRefreshEnabled)}
+                onChange={(event) => setAutomationForm((current) => ({ ...current, autoRefreshEnabled: event.target.checked }))}
+              />
+              <b>{automationForm.autoRefreshEnabled ? 'Enabled' : 'Disabled'}</b>
+            </span>
+          </label>
+
+          <Input
+            label="Refresh gap in days"
+            type="number"
+            value={automationForm.refreshIntervalDays}
+            error={automationErrors.refreshIntervalDays}
+            onChange={(value) => setAutomationForm((current) => ({ ...current, refreshIntervalDays: value }))}
+          />
+
+          <label className="field">
+            <span>Refresh status <em>Required</em></span>
+            <span className="input-shell">
+              <select
+                value={automationForm.refreshStatus || 'active'}
+                onChange={(event) => setAutomationForm((current) => ({ ...current, refreshStatus: event.target.value }))}
+              >
+                <option value="active">Active — follow refresh gap</option>
+                <option value="paused">Paused temporarily</option>
+                <option value="stopped">Stopped permanently</option>
+              </select>
+            </span>
+            {automationErrors.refreshStatus ? <strong>{automationErrors.refreshStatus}</strong> : null}
+          </label>
+
+          {automationForm.refreshStatus === 'paused' ? (
+            <Input
+              label="Pause until"
+              type="date"
+              value={automationForm.refreshPausedUntil}
+              error={automationErrors.refreshPausedUntil}
+              onChange={(value) => setAutomationForm((current) => ({ ...current, refreshPausedUntil: value }))}
+              optional
+            />
+          ) : null}
+
+          {automationForm.refreshStatus === 'stopped' ? (
+            <Input
+              label="Permanent stop reason"
+              value={automationForm.refreshStopReason}
+              error={automationErrors.refreshStopReason}
+              onChange={(value) => setAutomationForm((current) => ({ ...current, refreshStopReason: value }))}
+            />
+          ) : (
+            <Input
+              label="Internal note"
+              value={automationForm.refreshStopReason}
+              error={automationErrors.refreshStopReason}
+              onChange={(value) => setAutomationForm((current) => ({ ...current, refreshStopReason: value }))}
+              optional
+            />
+          )}
+
+          <div className="automation-helper-card">
+            <strong>How this works</strong>
+            <p>Daily cron runs every day, but this company refreshes only when its gap is due. Pause skips temporarily. Stopped skips permanently until Developer changes it back.</p>
+          </div>
+
+          <button className="primary-button" type="submit" disabled={savingAutomation}>
+            {savingAutomation ? 'Saving controls…' : 'Save automation controls'}
+          </button>
+        </form>
+      </SideFormTray>
     </section>
   );
+}
+
+function automationLabel(company) {
+  if (Number(company.auto_refresh_enabled ?? 1) !== 1) return 'Disabled';
+  if (company.refresh_status === 'paused') return 'Paused';
+  if (company.refresh_status === 'stopped') return 'Stopped';
+  return `Every ${company.refresh_interval_days || 1}d`;
+}
+
+function automationMeta(company) {
+  if (company.refresh_status === 'paused') {
+    return company.refresh_paused_until ? `Until ${String(company.refresh_paused_until).slice(0, 10)}` : 'Paused until resumed';
+  }
+
+  if (company.refresh_status === 'stopped') {
+    return company.refresh_stop_reason || 'Permanent stop';
+  }
+
+  if (Number(company.auto_refresh_enabled ?? 1) !== 1) {
+    return 'Auto refresh off';
+  }
+
+  return company.last_auto_refresh_at ? `Last ${company.last_auto_refresh_at}` : 'No auto refresh yet';
 }

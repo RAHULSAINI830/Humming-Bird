@@ -15,6 +15,8 @@ const {
   listActiveCompanies,
   getCompanyLimits,
   updateCompanyLimits,
+  updateCompanyAutomationPolicy,
+  markCompanyAutoRefreshed,
   getDeveloperCompanyAccess,
   listCompanyUsers,
   countCompanyBusinessOwners,
@@ -2439,6 +2441,46 @@ async function refreshPromptChecksForCompany(companyId) {
   };
 }
 
+function companyRefreshPolicyStatus(company, now = new Date()) {
+  const enabled = Number(company.auto_refresh_enabled ?? 1) === 1;
+  const status = normalize(company.refresh_status || 'active') || 'active';
+  const intervalDays = Math.max(1, Number(company.refresh_interval_days || 1));
+  const lastAutoRefreshAt = company.last_auto_refresh_at ? new Date(company.last_auto_refresh_at) : null;
+  const pausedUntil = company.refresh_paused_until ? new Date(company.refresh_paused_until) : null;
+
+  if (!enabled) {
+    return { canRefresh: false, reason: 'auto-refresh-disabled' };
+  }
+
+  if (status === 'stopped') {
+    return { canRefresh: false, reason: 'permanently-stopped' };
+  }
+
+  if (status === 'paused') {
+    if (!pausedUntil || Number.isNaN(pausedUntil.getTime()) || pausedUntil > now) {
+      return {
+        canRefresh: false,
+        reason: 'temporarily-paused',
+        paused_until: company.refresh_paused_until || null
+      };
+    }
+  }
+
+  if (lastAutoRefreshAt && !Number.isNaN(lastAutoRefreshAt.getTime())) {
+    const nextRefreshAt = new Date(lastAutoRefreshAt.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+
+    if (nextRefreshAt > now) {
+      return {
+        canRefresh: false,
+        reason: 'waiting-for-refresh-window',
+        next_refresh_at: nextRefreshAt.toISOString()
+      };
+    }
+  }
+
+  return { canRefresh: true, interval_days: intervalDays };
+}
+
 function settingsPayload(context) {
   const prompts = listCompanyPrompts(context.access.company_id);
 
@@ -2489,6 +2531,15 @@ async function handleDailyRefresh(req, res) {
       prompts: null
     };
 
+    const policyStatus = companyRefreshPolicyStatus(company);
+
+    if (!policyStatus.canRefresh) {
+      item.geo = { skipped: true, reason: policyStatus.reason, next_refresh_at: policyStatus.next_refresh_at || null, paused_until: policyStatus.paused_until || null };
+      item.prompts = { skipped: true, reason: policyStatus.reason, next_refresh_at: policyStatus.next_refresh_at || null, paused_until: policyStatus.paused_until || null };
+      results.push(item);
+      continue;
+    }
+
     try {
       const connection = getGoogleConnection(company.company_id);
       const selectedProperty = getSelectedSearchConsoleProperty(company.company_id);
@@ -2508,6 +2559,7 @@ async function handleDailyRefresh(req, res) {
       item.prompts = { skipped: true, error: error.safeMessage || error.message || 'Prompt refresh failed' };
     }
 
+    markCompanyAutoRefreshed(company.company_id);
     results.push(item);
   }
 
@@ -3275,6 +3327,68 @@ async function handleDeveloperUpdateCompanyLimits(req, res) {
   });
 }
 
+async function handleDeveloperUpdateCompanyAutomation(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const companyId = Number(body.companyId);
+  const autoRefreshEnabled = Boolean(body.autoRefreshEnabled);
+  const refreshIntervalDays = Number(body.refreshIntervalDays);
+  const refreshStatus = normalize(body.refreshStatus || 'active');
+  const refreshPausedUntil = normalize(body.refreshPausedUntil);
+  const refreshStopReason = normalize(body.refreshStopReason);
+  const errors = {};
+  const allowedStatuses = new Set(['active', 'paused', 'stopped']);
+
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    errors.companyId = 'Select a valid company.';
+  }
+
+  if (!Number.isInteger(refreshIntervalDays) || refreshIntervalDays < 1 || refreshIntervalDays > 365) {
+    errors.refreshIntervalDays = 'Refresh gap must be between 1 and 365 days.';
+  }
+
+  if (!allowedStatuses.has(refreshStatus)) {
+    errors.refreshStatus = 'Choose active, paused, or stopped.';
+  }
+
+  if (refreshStatus === 'paused' && refreshPausedUntil && Number.isNaN(new Date(refreshPausedUntil).getTime())) {
+    errors.refreshPausedUntil = 'Enter a valid pause-until date.';
+  }
+
+  if (refreshStatus === 'stopped' && !refreshStopReason) {
+    errors.refreshStopReason = 'Add a reason when permanently stopping refreshes.';
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix company automation controls.', errors }, 422);
+  }
+
+  updateCompanyAutomationPolicy(companyId, {
+    autoRefreshEnabled,
+    refreshIntervalDays,
+    refreshStatus,
+    refreshPausedUntil: refreshStatus === 'paused' ? refreshPausedUntil : '',
+    refreshStopReason: refreshStatus === 'stopped' || refreshStopReason ? refreshStopReason : ''
+  });
+
+  return sendJson(res, {
+    ok: true,
+    stats: getPlatformStats(),
+    companies: listAllCompaniesForDeveloper(),
+    users: listAllUsersForDeveloper(),
+    accessRecords: listWorkspaceAccessForDeveloper()
+  });
+}
+
 async function handleDeveloperRemoveAccess(req, res) {
   const session = requireSession(req, res);
 
@@ -3494,6 +3608,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/developer/companies/limits') {
       return handleDeveloperUpdateCompanyLimits(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/developer/companies/automation') {
+      return handleDeveloperUpdateCompanyAutomation(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/developer/access/remove') {
