@@ -281,6 +281,27 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_aeo_recommendations_company_id
       ON aeo_recommendations(company_id);
 
+    CREATE TABLE IF NOT EXISTS aeo_action_tracking (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      recommendation_id INTEGER NOT NULL,
+      action_index INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'not_started',
+      notes TEXT,
+      updated_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (recommendation_id) REFERENCES aeo_recommendations(id) ON DELETE CASCADE,
+      FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_aeo_action_tracking_unique
+      ON aeo_action_tracking(recommendation_id, action_index);
+
+    CREATE INDEX IF NOT EXISTS idx_aeo_action_tracking_company_id
+      ON aeo_action_tracking(company_id);
+
     CREATE TABLE IF NOT EXISTS google_connections (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -1340,6 +1361,50 @@ function listAeoRecommendations(companyId) {
   `).all(companyId);
 }
 
+function listAeoActionTracking(companyId, recommendationId) {
+  return db.prepare(`
+    SELECT *
+    FROM aeo_action_tracking
+    WHERE company_id = ?
+      AND recommendation_id = ?
+    ORDER BY action_index ASC, id ASC
+  `).all(companyId, recommendationId);
+}
+
+function upsertAeoActionTracking({ companyId, recommendationId, actionIndex, status, notes, userId }) {
+  const existing = db.prepare(`
+    SELECT id
+    FROM aeo_action_tracking
+    WHERE company_id = ?
+      AND recommendation_id = ?
+      AND action_index = ?
+  `).get(companyId, recommendationId, actionIndex);
+
+  if (existing) {
+    return db.prepare(`
+      UPDATE aeo_action_tracking
+      SET
+        status = ?,
+        notes = ?,
+        updated_by_user_id = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(status, notes, userId || null, existing.id);
+  }
+
+  return db.prepare(`
+    INSERT INTO aeo_action_tracking (
+      company_id,
+      recommendation_id,
+      action_index,
+      status,
+      notes,
+      updated_by_user_id
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(companyId, recommendationId, actionIndex, status, notes, userId || null);
+}
+
 function listCompanyPrompts(companyId) {
   return db.prepare(`
     SELECT *
@@ -2205,6 +2270,8 @@ module.exports = {
   createAeoRecommendation,
   getLatestAeoRecommendation,
   listAeoRecommendations,
+  listAeoActionTracking,
+  upsertAeoActionTracking,
   listCompanyPrompts,
   getCompanyPromptById,
   addCompanyPrompt,

@@ -10,6 +10,8 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
   const actions = latest?.action_plan || [];
   const opportunities = latest?.content_opportunities || [];
   const evidence = latest?.evidence || [];
+  const trackerSummary = latest?.trackerSummary || {};
+  const history = data?.history || [];
   const completePrereqs = [
     prerequisites.analysisCompleted,
     (prerequisites.competitors || 0) > 0,
@@ -18,6 +20,8 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
   ].filter(Boolean).length;
   const readiness = Math.round((completePrereqs / 4) * 100);
   const [loading, setLoading] = useState(false);
+  const [savingAction, setSavingAction] = useState(null);
+  const [noteDrafts, setNoteDrafts] = useState({});
   const [message, setMessage] = useState('');
 
   async function generatePlan() {
@@ -38,12 +42,50 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
     }
   }
 
+  function actionNote(action, index) {
+    const key = `${latest?.id || 'plan'}-${index}`;
+    return Object.prototype.hasOwnProperty.call(noteDrafts, key)
+      ? noteDrafts[key]
+      : (action.tracker?.notes || '');
+  }
+
+  function updateNote(index, value) {
+    const key = `${latest?.id || 'plan'}-${index}`;
+    setNoteDrafts((current) => ({ ...current, [key]: value }));
+  }
+
+  async function updateAction(action, index, status = action.tracker?.status || 'not_started') {
+    if (!latest) return;
+
+    const key = `${latest.id}-${index}`;
+    setSavingAction(key);
+    setMessage('');
+
+    try {
+      const result = await api('/api/aeo-recommendations/action', {
+        method: 'POST',
+        body: JSON.stringify({
+          recommendationId: latest.id,
+          actionIndex: index,
+          status,
+          notes: actionNote(action, index)
+        })
+      });
+      onChange(result);
+      setMessage('Tracker updated.');
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSavingAction(null);
+    }
+  }
+
   return (
     <section className="page-content aeo-page">
       <PageHeader
         eyebrow="What’s Next"
         title="What to focus on next"
-        subtitle="A real AEO growth plan generated from saved analysis, prompt checks, competitor mentions, and citations."
+        subtitle="Track next-best AEO actions manually from saved analysis, prompt checks, competitor mentions, and citations."
         workspace={workspace}
         action={data?.canGenerate ? (
           <button className="primary-button compact-action" type="button" onClick={generatePlan} disabled={loading}>
@@ -95,9 +137,9 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
             <div className="aeo-hero-copy">
               <div className="analysis-hero-meta">
                 <span className="pill status-completed">Stored result</span>
-                <span className="soft-pill">{displayAiSource(latest.source_type)} · {latest.updated_at || latest.created_at}</span>
+            <span className="soft-pill">{displayAiSource(latest.source_type)} · Generated {latest.updated_at || latest.created_at}</span>
               </div>
-              <p className="aeo-hero-kicker">Recommended focus</p>
+              <p className="aeo-hero-kicker">Active growth tracker</p>
               <h2>{latest.focus_summary}</h2>
             </div>
             <div className="aeo-hero-side">
@@ -109,13 +151,20 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
                 <b>Focus map</b>
               </div>
               <div className="aeo-score-row">
-                <AeoMiniMetric label="Visibility score" value={summary.visibilityScore === null || summary.visibilityScore === undefined ? 'No data' : `${summary.visibilityScore}%`} />
-                <AeoMiniMetric label="Brand mentions" value={summary.brandMentioned ?? 0} />
-                <AeoMiniMetric label="Competitor mentions" value={summary.competitorMentions ?? 0} />
-                <AeoMiniMetric label="Citation ideas" value={summary.citations ?? 0} />
+                <AeoMiniMetric label="Actions done" value={`${trackerSummary.done || 0}/${trackerSummary.total || actions.length}`} />
+                <AeoMiniMetric label="In progress" value={trackerSummary.in_progress || 0} />
+                <AeoMiniMetric label="Blocked" value={trackerSummary.blocked || 0} />
+                <AeoMiniMetric label="Last manual update" value={trackerSummary.last_updated_at ? formatShortDate(trackerSummary.last_updated_at) : 'Not yet'} />
               </div>
             </div>
           </article>
+
+          <div className="aeo-tracker-strip">
+            <AeoMiniMetric label="Visibility score" value={summary.visibilityScore === null || summary.visibilityScore === undefined ? 'No data' : `${summary.visibilityScore}%`} />
+            <AeoMiniMetric label="Brand mentions" value={summary.brandMentioned ?? 0} />
+            <AeoMiniMetric label="Competitor mentions" value={summary.competitorMentions ?? 0} />
+            <AeoMiniMetric label="Citation ideas" value={summary.citations ?? 0} />
+          </div>
 
           <div className="aeo-section-intro">
             <div>
@@ -148,18 +197,50 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
               <div className="aeo-card-heading">
                 <div>
                   <p className="eyebrow">How to focus</p>
-                  <h2>Execution plan</h2>
-                </div>
-                <span>{actions.length} actions</span>
-              </div>
-              <div className="aeo-timeline">
+              <h2>Manual action tracker</h2>
+            </div>
+            <span>{actions.length} actions</span>
+          </div>
+              <div className="aeo-action-board">
                 {actions.map((action, index) => (
-                  <div className="aeo-timeline-item" key={`${action.step}-${index}`}>
-                    <span>{action.priority}</span>
+                  <div className={`aeo-action-item status-${action.tracker?.status || 'not_started'}`} key={`${action.step}-${index}`}>
+                    <span>{index + 1}</span>
                     <div>
-                      <h3>{action.step}</h3>
+                      <div className="aeo-action-item-head">
+                        <h3>{action.step}</h3>
+                        <AeoStatusPill status={action.tracker?.status || 'not_started'} />
+                      </div>
                       <p>{action.how_to_do_it}</p>
                       <small>{action.expected_outcome}</small>
+                      <div className="aeo-status-controls">
+                        {['not_started', 'in_progress', 'blocked', 'done'].map((status) => (
+                          <button
+                            type="button"
+                            key={status}
+                            className={(action.tracker?.status || 'not_started') === status ? 'active' : ''}
+                            onClick={() => updateAction(action, index, status)}
+                            disabled={savingAction === `${latest.id}-${index}`}
+                          >
+                            {statusLabel(status)}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="aeo-note-field">
+                        <span>Manual update note</span>
+                        <textarea
+                          value={actionNote(action, index)}
+                          onChange={(event) => updateNote(index, event.target.value)}
+                          placeholder="Add progress, blocker, owner note, or next follow-up…"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="aeo-save-note"
+                        onClick={() => updateAction(action, index)}
+                        disabled={savingAction === `${latest.id}-${index}`}
+                      >
+                        {savingAction === `${latest.id}-${index}` ? 'Saving…' : 'Save update'}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -209,6 +290,25 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
               </table>
             </div>
           </article>
+
+          <article className="aeo-content-card">
+            <div className="dashboard-panel-head">
+              <div>
+                <p className="eyebrow">Plan history</p>
+                <h2>Saved What’s Next snapshots</h2>
+              </div>
+              <span>{history.length} plans</span>
+            </div>
+            <div className="aeo-history-list">
+              {history.slice(0, 6).map((item, index) => (
+                <div className={index === 0 ? 'active' : ''} key={item.id}>
+                  <span>{index === 0 ? 'Current' : `#${index + 1}`}</span>
+                  <p>{item.focus_summary || 'Saved plan'}</p>
+                  <small>{displayAiSource(item.source_type)} · {item.created_at}</small>
+                </div>
+              ))}
+            </div>
+          </article>
         </>
       )}
     </section>
@@ -232,4 +332,30 @@ function AeoMiniMetric({ label, value }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function AeoStatusPill({ status }) {
+  return <span className={`aeo-status-pill ${status}`}>{statusLabel(status)}</span>;
+}
+
+function statusLabel(status = '') {
+  return {
+    not_started: 'Not started',
+    in_progress: 'In progress',
+    done: 'Done',
+    blocked: 'Blocked'
+  }[status] || status;
+}
+
+function formatShortDate(value) {
+  if (!value) return 'Not yet';
+
+  try {
+    return new Intl.DateTimeFormat('en', {
+      month: 'short',
+      day: 'numeric'
+    }).format(new Date(String(value).replace(' ', 'T')));
+  } catch {
+    return value;
+  }
 }

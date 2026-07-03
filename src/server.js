@@ -28,6 +28,8 @@ const {
   createAeoRecommendation,
   getLatestAeoRecommendation,
   listAeoRecommendations,
+  listAeoActionTracking,
+  upsertAeoActionTracking,
   listCompanyPrompts,
   listCompanyCompetitors,
   addCompanyPrompt,
@@ -627,6 +629,43 @@ function parseAeoRecommendation(record) {
     evidence: safeJsonArray(record.evidence_json),
     created_at: record.created_at,
     updated_at: record.updated_at
+  };
+}
+
+function attachAeoTracking(companyId, recommendation) {
+  if (!recommendation) return null;
+
+  const trackingRows = listAeoActionTracking(companyId, recommendation.id);
+  const trackingByIndex = new Map(trackingRows.map((row) => [Number(row.action_index), row]));
+  const actionPlan = (recommendation.action_plan || []).map((action, index) => {
+    const row = trackingByIndex.get(index);
+
+    return {
+      ...action,
+      tracker: {
+        action_index: index,
+        status: row?.status || 'not_started',
+        notes: row?.notes || '',
+        updated_at: row?.updated_at || null
+      }
+    };
+  });
+  const trackerSummary = actionPlan.reduce((summary, action) => {
+    const status = action.tracker?.status || 'not_started';
+    summary.total += 1;
+    summary[status] = (summary[status] || 0) + 1;
+
+    if (action.tracker?.updated_at && (!summary.last_updated_at || action.tracker.updated_at > summary.last_updated_at)) {
+      summary.last_updated_at = action.tracker.updated_at;
+    }
+
+    return summary;
+  }, { total: 0, not_started: 0, in_progress: 0, done: 0, blocked: 0, last_updated_at: null });
+
+  return {
+    ...recommendation,
+    action_plan: actionPlan,
+    trackerSummary
   };
 }
 
@@ -2628,7 +2667,7 @@ function handleAeoRecommendations(req, res) {
   const competitors = listCompanyCompetitors(companyId);
   const analysis = getLatestCompletedBusinessAnalysis(companyId);
   const visibilitySummary = dashboardVisibilitySummary(prompts, context.access);
-  const latest = parseAeoRecommendation(getLatestAeoRecommendation(companyId));
+  const latest = attachAeoTracking(companyId, parseAeoRecommendation(getLatestAeoRecommendation(companyId)));
   const history = listAeoRecommendations(companyId).map(parseAeoRecommendation);
 
   return sendJson(res, {
@@ -2651,6 +2690,56 @@ function handleAeoRecommendations(req, res) {
       citationCoverage: visibilitySummary.citationCoverage
     }
   });
+}
+
+async function handleUpdateAeoAction(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  if (!CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const recommendationId = Number(body.recommendationId);
+  const actionIndex = Number(body.actionIndex);
+  const status = normalize(body.status);
+  const notes = normalize(body.notes);
+  const allowedStatuses = new Set(['not_started', 'in_progress', 'done', 'blocked']);
+  const latest = getLatestAeoRecommendation(context.access.company_id);
+  const errors = {};
+
+  if (!latest || Number(latest.id) !== recommendationId) {
+    errors.recommendationId = 'Only the latest What’s Next plan can be tracked.';
+  }
+
+  const actionPlanLength = safeJsonArray(latest?.action_plan_json).length;
+
+  if (!Number.isInteger(actionIndex) || actionIndex < 0 || actionIndex >= actionPlanLength) {
+    errors.actionIndex = 'Select a valid action.';
+  }
+
+  if (!allowedStatuses.has(status)) {
+    errors.status = 'Select a valid status.';
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix the tracker update.', errors }, 422);
+  }
+
+  upsertAeoActionTracking({
+    companyId: context.access.company_id,
+    recommendationId,
+    actionIndex,
+    status,
+    notes,
+    userId: context.session?.userId
+  });
+
+  return handleAeoRecommendations(req, res);
 }
 
 async function handleGenerateAeoRecommendations(req, res) {
@@ -3296,6 +3385,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/aeo-recommendations/generate') {
       return handleGenerateAeoRecommendations(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/aeo-recommendations/action') {
+      return handleUpdateAeoAction(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/prompts') {
