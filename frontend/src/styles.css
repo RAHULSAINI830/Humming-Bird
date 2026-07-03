@@ -2925,6 +2925,10 @@ button {
 }
 
 .overview-table-report-button {
+  width: auto;
+  min-width: 112px;
+  max-width: max-content;
+  align-self: flex-start;
   margin: 10px 0 12px 14px;
   padding: 6px 11px;
   border: var(--overview-divider-width) solid #cfd6e0;
@@ -4332,7 +4336,8 @@ button {
 .logo-chip img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  padding: 0;
+  object-fit: contain;
   background: #ffffff;
 }
 
@@ -6432,7 +6437,7 @@ td a {
 .logo-chip img {
   width: 100%;
   height: 100%;
-  padding: 6px;
+  padding: 0;
   object-fit: contain;
   background: #ffffff;
 }
@@ -6464,7 +6469,7 @@ td a {
 .workspace-heading-card .logo-chip img,
 .sidebar-user-top .logo-chip img,
 .entity-cell .logo-chip img {
-  padding: 6px;
+  padding: 0;
 }
 
 .settings-company-main .logo-chip {
@@ -6475,7 +6480,7 @@ td a {
 }
 
 .settings-company-main .logo-chip img {
-  padding: 10px;
+  padding: 0;
   object-fit: contain;
 }
 
