@@ -8472,13 +8472,63 @@ td a {
 ) {
   letter-spacing: 0.025em !important;
   word-spacing: 0.08em !important;
-  font-weight: 100 !important;
+  font-weight: 200 !important;
 }
 
 .dashboard-overview-page :where(h1, h2, h3, .dashboard-panel-head h2, .overview-title-block h1) {
   letter-spacing: 0.018em !important;
   word-spacing: 0.08em !important;
   font-weight: 300 !important;
+}
+
+.dashboard-overview-page .overview-ai-card .eyebrow {
+  color: var(--accent-dark) !important;
+  font-size: 23px !important;
+  line-height: 1.12 !important;
+  letter-spacing: -0.018em !important;
+  word-spacing: 0.03em !important;
+  font-weight: 420 !important;
+}
+
+.dashboard-overview-page .overview-ai-card small {
+  max-width: 560px;
+  color: #2f3d54 !important;
+  font-size: 15px !important;
+  line-height: 1.42 !important;
+  letter-spacing: 0.002em !important;
+  word-spacing: 0.035em !important;
+  font-weight: 360 !important;
+}
+
+.dashboard-overview-page .overview-kpi-card>p {
+  max-width: 155px;
+  color: #1f2b43 !important;
+  font-size: 17px !important;
+  line-height: 1.12 !important;
+  letter-spacing: -0.01em !important;
+  word-spacing: 0.02em !important;
+  font-weight: 420 !important;
+}
+
+.dashboard-overview-page .overview-kpi-card>strong {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 30px;
+  color: var(--primary);
+  font-size: clamp(50px, 4vw, 50px);
+  line-height: .85;
+  letter-spacing: -.075em;
+  font-weight: 460;
+}
+
+.dashboard-overview-page .overview-kpi-foot small {
+  color: #52627a !important;
+  font-size: 14px !important;
+  line-height: 1.24 !important;
+  letter-spacing: 0.002em !important;
+  word-spacing: 0.03em !important;
+  font-weight: 360 !important;
 }
 
 @media (max-width: 1280px) {
