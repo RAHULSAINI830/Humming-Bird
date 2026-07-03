@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { DashboardEmptyBlock, EmptyInline, LogoChip, PageHeader, StatusBadge } from '../components/common';
+import { DashboardEmptyBlock, EmptyInline, Input, LogoChip, PageHeader, SideFormTray, StatusBadge } from '../components/common';
 
 export default function DeveloperAdmin({ data, onChange, workspace }) {
   const stats = data?.stats || {};
@@ -10,6 +10,10 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const [message, setMessage] = useState('');
   const [deletingCompanyId, setDeletingCompanyId] = useState(null);
   const [removingAccessId, setRemovingAccessId] = useState(null);
+  const [limitCompany, setLimitCompany] = useState(null);
+  const [limitForm, setLimitForm] = useState({});
+  const [limitErrors, setLimitErrors] = useState({});
+  const [savingLimits, setSavingLimits] = useState(false);
 
   if (!data) {
     return <EmptyInline title="Loading Developer Admin" text="Fetching platform-wide companies, users, and access records." />;
@@ -59,6 +63,45 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
     }
   }
 
+  function openLimitEditor(company) {
+    setLimitCompany(company);
+    setLimitErrors({});
+    setLimitForm({
+      promptLimit: String(company.prompt_limit ?? 15),
+      competitorLimit: String(company.competitor_limit ?? 10)
+    });
+  }
+
+  async function saveCompanyLimits(event) {
+    event.preventDefault();
+
+    if (!limitCompany) return;
+
+    setSavingLimits(true);
+    setLimitErrors({});
+    setMessage('');
+
+    try {
+      const result = await api('/api/developer/companies/limits', {
+        method: 'POST',
+        body: JSON.stringify({
+          companyId: limitCompany.company_id,
+          promptLimit: Number(limitForm.promptLimit),
+          competitorLimit: Number(limitForm.competitorLimit)
+        })
+      });
+      onChange(result);
+      setMessage(`${limitCompany.company_name} limits updated.`);
+      setLimitCompany(null);
+      setLimitForm({});
+    } catch (error) {
+      setMessage(error.message);
+      setLimitErrors(error.data?.errors || {});
+    } finally {
+      setSavingLimits(false);
+    }
+  }
+
   return (
     <section className="page-content">
       <PageHeader
@@ -93,7 +136,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
         </div>
         <table className="dashboard-data-table developer-table">
           <thead>
-            <tr><th>Company</th><th>Website</th><th>Industry</th><th>Onboarding</th><th>Users</th><th>Status</th><th>Created</th><th>Actions</th></tr>
+            <tr><th>Company</th><th>Website</th><th>Industry</th><th>Prompts</th><th>Competitors</th><th>Onboarding</th><th>Users</th><th>Status</th><th>Created</th><th>Actions</th></tr>
           </thead>
           <tbody>
             {companies.map((company) => (
@@ -101,19 +144,30 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
                 <td><div className="entity-cell"><LogoChip name={company.company_name} url={company.logo_url || company.website_url} /><strong>{company.company_name}</strong></div></td>
                 <td className="url-cell">{company.website_url || 'Not added'}</td>
                 <td>{company.industry || 'Not added'}</td>
+                <td><span className="soft-pill">{company.prompt_limit ?? 15} max</span></td>
+                <td><span className="soft-pill">{company.competitor_limit ?? 10} max</span></td>
                 <td><StatusBadge active={Boolean(company.onboarding_completed)}>{company.onboarding_completed ? 'Completed' : 'Incomplete'}</StatusBadge></td>
                 <td>{company.users_count}</td>
                 <td><StatusBadge active={company.status === 'active'}>{company.status}</StatusBadge></td>
                 <td>{company.created_at}</td>
                 <td>
-                  <button
-                    type="button"
-                    className="danger-action-button"
-                    onClick={() => deleteSelectedCompany(company)}
-                    disabled={deletingCompanyId === company.company_id}
-                  >
-                    {deletingCompanyId === company.company_id ? 'Deleting…' : 'Delete'}
-                  </button>
+                  <div className="developer-action-row">
+                    <button
+                      type="button"
+                      className="secondary-action-button"
+                      onClick={() => openLimitEditor(company)}
+                    >
+                      Limits
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-action-button"
+                      onClick={() => deleteSelectedCompany(company)}
+                      disabled={deletingCompanyId === company.company_id}
+                    >
+                      {deletingCompanyId === company.company_id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -188,6 +242,38 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
           {!accessRecords.length ? <DashboardEmptyBlock title="No access records yet" text="Company access assignments will appear here." /> : null}
         </article>
       </div>
+
+      <SideFormTray
+        open={Boolean(limitCompany)}
+        title="Workspace limits"
+        eyebrow="Developer control"
+        onClose={() => setLimitCompany(null)}
+      >
+        <form className="tray-form" onSubmit={saveCompanyLimits}>
+          <div className="limit-editor-summary">
+            <LogoChip name={limitCompany?.company_name || 'Company'} url={limitCompany?.logo_url || limitCompany?.website_url} />
+            <div>
+              <strong>{limitCompany?.company_name}</strong>
+              <small>Set how many prompts and competitors this workspace can use.</small>
+            </div>
+          </div>
+          <Input
+            label="Prompt limit"
+            value={limitForm.promptLimit}
+            error={limitErrors.promptLimit}
+            onChange={(value) => setLimitForm((current) => ({ ...current, promptLimit: value }))}
+          />
+          <Input
+            label="Competitor limit"
+            value={limitForm.competitorLimit}
+            error={limitErrors.competitorLimit}
+            onChange={(value) => setLimitForm((current) => ({ ...current, competitorLimit: value }))}
+          />
+          <button className="primary-button" type="submit" disabled={savingLimits}>
+            {savingLimits ? 'Saving limits…' : 'Save limits'}
+          </button>
+        </form>
+      </SideFormTray>
     </section>
   );
 }

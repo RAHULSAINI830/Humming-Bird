@@ -65,6 +65,10 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
   const analysis = setupStatus?.analysis;
   const competitors = setupStatus?.competitors || [];
   const prompts = setupStatus?.prompts || [];
+  const promptLimit = setupStatus?.limits?.prompts;
+  const competitorLimit = setupStatus?.limits?.competitors;
+  const promptLimitReached = Boolean(promptLimit?.reached);
+  const competitorLimitReached = Boolean(competitorLimit?.reached);
   const hasAnalysis = Boolean(analysis);
   const hasCompetitors = competitors.length > 0;
   const hasPrompts = prompts.length > 0;
@@ -72,6 +76,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
 
   async function addCompetitor(event) {
     event.preventDefault();
+    if (competitorLimitReached) return;
     await onAction('../competitors/add'.replace('../', ''), {
       competitorName: competitorForm.competitorName,
       websiteUrl: competitorForm.websiteUrl,
@@ -82,6 +87,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
 
   async function addPrompt(event) {
     event.preventDefault();
+    if (promptLimitReached) return;
     await onAction('../prompts/add'.replace('../', ''), {
       promptText: promptForm.promptText,
       promptCategory: promptForm.promptCategory,
@@ -145,11 +151,11 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
                     {loading === 'generate-analysis' ? 'Generating business analysis…' : 'Generate business analysis'}
                   </button>
                 ) : !hasCompetitors ? (
-                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-competitors')} disabled={Boolean(loading)}>
+                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-competitors')} disabled={Boolean(loading) || competitorLimitReached}>
                     {loading === 'generate-competitors' ? 'Discovering competitors…' : 'Confirm analysis & discover competitors'}
                   </button>
                 ) : !hasPrompts ? (
-                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-prompts')} disabled={Boolean(loading)}>
+                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-prompts')} disabled={Boolean(loading) || promptLimitReached}>
                     {loading === 'generate-prompts' ? 'Generating prompts…' : 'Confirm competitors & generate prompts'}
                   </button>
                 ) : !hasChecks ? (
@@ -197,8 +203,9 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
           <article className="setup-review-card">
             <div className="setup-review-head">
               <p className="eyebrow">Competitors review</p>
-              <span>{competitors.length} competitors</span>
+              <span>{competitorLimit ? `${competitorLimit.used}/${competitorLimit.limit} competitors` : `${competitors.length} competitors`}</span>
             </div>
+            {competitorLimitReached ? <div className="limit-mini-note">Competitor limit reached. Ask a Developer to increase the limit.</div> : null}
             <div className="setup-review-list">
               {competitors.map((competitor) => (
                 <div key={competitor.id}>
@@ -212,7 +219,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               <form className="setup-mini-form" onSubmit={addCompetitor}>
                 <input placeholder="Competitor name" value={competitorForm.competitorName || ''} onChange={(event) => setCompetitorForm((current) => ({ ...current, competitorName: event.target.value }))} />
                 <input placeholder="Website URL" value={competitorForm.websiteUrl || ''} onChange={(event) => setCompetitorForm((current) => ({ ...current, websiteUrl: event.target.value }))} />
-                <button type="submit" disabled={Boolean(loading)}>Add competitor</button>
+                <button type="submit" disabled={Boolean(loading) || competitorLimitReached}>Add competitor</button>
               </form>
             ) : null}
           </article>
@@ -220,8 +227,9 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
           <article className="setup-review-card wide">
             <div className="setup-review-head">
               <p className="eyebrow">Prompt review</p>
-              <span>{prompts.length} prompts</span>
+              <span>{promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts` : `${prompts.length} prompts`}</span>
             </div>
+            {promptLimitReached ? <div className="limit-mini-note">Prompt limit reached. Ask a Developer to increase the limit.</div> : null}
             <div className="setup-review-list prompts">
               {prompts.map((prompt) => (
                 <div key={prompt.id}>
@@ -236,7 +244,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
                 <input placeholder="Add a prompt" value={promptForm.promptText || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptText: event.target.value }))} />
                 <input placeholder="Category" value={promptForm.promptCategory || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptCategory: event.target.value }))} />
                 <input placeholder="Intent" value={promptForm.promptIntent || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptIntent: event.target.value }))} />
-                <button type="submit" disabled={Boolean(loading)}>Add prompt</button>
+                <button type="submit" disabled={Boolean(loading) || promptLimitReached}>Add prompt</button>
               </form>
             ) : null}
           </article>

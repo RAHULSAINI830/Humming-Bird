@@ -4,6 +4,8 @@ import { IconButton, Input, LogoChip, PageHeader, SideFormTray, displayAiSource 
 
 export default function Competitors({ data, onChange, workspace }) {
   const competitors = data?.competitors || [];
+  const competitorLimit = data?.limits?.competitors;
+  const competitorLimitReached = Boolean(competitorLimit?.reached);
   const [form, setForm] = useState({});
   const [addOpen, setAddOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -32,6 +34,9 @@ export default function Competitors({ data, onChange, workspace }) {
     } catch (error) {
       setMessage(error.message);
       setErrors(error.data?.errors || {});
+      if (error.data?.limits && data) {
+        onChange({ ...data, limits: error.data.limits });
+      }
     } finally {
       setSaving(false);
     }
@@ -44,10 +49,26 @@ export default function Competitors({ data, onChange, workspace }) {
         title="Competitor landscape"
         subtitle="Company competitors saved in the backend database."
         workspace={workspace}
-        action={data?.canManage ? <IconButton label="Add competitor" onClick={() => setAddOpen(true)} /> : null}
+        action={data?.canManage ? (
+          competitorLimitReached ? (
+            <span className="limit-reached-pill">Competitor limit reached</span>
+          ) : (
+            <IconButton label="Add competitor" onClick={() => setAddOpen(true)} />
+          )
+        ) : null}
       />
 
       {message ? <div className={Object.keys(errors).length ? 'notice' : 'success-notice'}>{message}</div> : null}
+      {competitorLimitReached ? (
+        <div className="info-notice limit-info-notice">
+          This workspace has used all {competitorLimit.limit} competitors. Ask a Developer to increase the workspace competitor limit.
+        </div>
+      ) : null}
+
+      <div className="limit-usage-strip">
+        <span>{competitorLimit ? `${competitorLimit.used}/${competitorLimit.limit} competitors used` : `${competitors.length} competitors tracked`}</span>
+        {competitorLimit ? <b>{competitorLimit.remaining} remaining</b> : null}
+      </div>
 
       <div className="table-panel">
         <table>
@@ -80,7 +101,7 @@ export default function Competitors({ data, onChange, workspace }) {
           <Input label="Competitor Name" value={form.competitorName} error={errors.competitorName} onChange={(value) => update('competitorName', value)} />
           <Input label="Website URL" value={form.websiteUrl} optional onChange={(value) => update('websiteUrl', value)} />
           <Input label="Notes" value={form.notes} optional onChange={(value) => update('notes', value)} />
-          <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Adding…' : 'Add Competitor'}</button>
+          <button className="primary-button" type="submit" disabled={saving || competitorLimitReached}>{saving ? 'Adding…' : 'Add Competitor'}</button>
         </form>
       </SideFormTray>
     </section>

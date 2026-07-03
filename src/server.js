@@ -13,6 +13,8 @@ const {
   userHasRole,
   getAllCompaniesForWorkspace,
   listActiveCompanies,
+  getCompanyLimits,
+  updateCompanyLimits,
   getDeveloperCompanyAccess,
   listCompanyUsers,
   countCompanyBusinessOwners,
@@ -668,6 +670,33 @@ function promptSummary(prompts) {
   };
 }
 
+function companyLimitPayload(companyId) {
+  const limits = getCompanyLimits(companyId);
+
+  return {
+    prompts: {
+      limit: limits.prompt_limit,
+      used: limits.prompt_count,
+      remaining: limits.prompt_remaining,
+      reached: limits.prompt_remaining <= 0
+    },
+    competitors: {
+      limit: limits.competitor_limit,
+      used: limits.competitor_count,
+      remaining: limits.competitor_remaining,
+      reached: limits.competitor_remaining <= 0
+    }
+  };
+}
+
+function promptLimitError(limit) {
+  return `Prompt limit reached. This workspace can use up to ${limit} prompts. Contact your administrator to increase the limit.`;
+}
+
+function competitorLimitError(limit) {
+  return `Competitor limit reached. This workspace can track up to ${limit} competitors. Contact your administrator to increase the limit.`;
+}
+
 function buildAeoRecommendationContext(company, analysis, prompts, competitors, visibilitySummary) {
   const enrichedPrompts = enrichPrompts(prompts);
 
@@ -1063,6 +1092,7 @@ function setupPipelineStatus(companyId) {
   return {
     ready: requiredSteps.every((step) => step.complete),
     steps,
+    limits: companyLimitPayload(companyId),
     counts: {
       prompts: prompts.length,
       competitors: competitors.length,
@@ -2251,8 +2281,14 @@ async function handleSetupGenerateCompetitors(req, res) {
 
   try {
     if (!listCompanyCompetitors(companyId).length) {
+      const limits = getCompanyLimits(companyId);
+
+      if (limits.competitor_remaining <= 0) {
+        return sendJson(res, { error: competitorLimitError(limits.competitor_limit), limits: companyLimitPayload(companyId) }, 409);
+      }
+
       const competitors = await AIService.discoverCompetitors(context.access, analysis);
-      upsertCompanyCompetitors(companyId, competitors, 'gemini');
+      upsertCompanyCompetitors(companyId, competitors.slice(0, limits.competitor_remaining), 'gemini');
     }
 
     return sendJson(res, setupPipelineStatus(companyId));
@@ -2280,8 +2316,14 @@ async function handleSetupGeneratePrompts(req, res) {
 
   try {
     if (!listCompanyPrompts(companyId).length) {
+      const limits = getCompanyLimits(companyId);
+
+      if (limits.prompt_remaining <= 0) {
+        return sendJson(res, { error: promptLimitError(limits.prompt_limit), limits: companyLimitPayload(companyId) }, 409);
+      }
+
       const prompts = await AIService.generateCompanyPrompts(context.access, analysis);
-      replaceCompanyPrompts(companyId, prompts, 'gemini');
+      replaceCompanyPrompts(companyId, prompts.slice(0, limits.prompt_remaining), 'gemini');
     }
 
     return sendJson(res, setupPipelineStatus(companyId));
@@ -2356,6 +2398,7 @@ function settingsPayload(context) {
     analysis: getLatestBusinessAnalysis(context.access.company_id) || null,
     promptsSummary: promptSummary(prompts),
     competitors: listCompanyCompetitors(context.access.company_id),
+    limits: companyLimitPayload(context.access.company_id),
     visibilityRuns: listPromptVisibilityRuns(context.access.company_id, 8)
   };
 }
@@ -2448,6 +2491,10 @@ async function handleSetupAddPrompt(req, res) {
   const body = await readJson(req);
   const promptText = normalize(body.promptText);
   if (!promptText) return sendJson(res, { error: 'Prompt text is required.' }, 422);
+  const limits = getCompanyLimits(context.access.company_id);
+  if (limits.prompt_remaining <= 0) {
+    return sendJson(res, { error: promptLimitError(limits.prompt_limit), limits: companyLimitPayload(context.access.company_id) }, 409);
+  }
   addCompanyPrompt({
     companyId: context.access.company_id,
     promptText,
@@ -2464,6 +2511,10 @@ async function handleSetupAddCompetitor(req, res) {
   const body = await readJson(req);
   const competitorName = normalize(body.competitorName);
   if (!competitorName) return sendJson(res, { error: 'Competitor name is required.' }, 422);
+  const limits = getCompanyLimits(context.access.company_id);
+  if (limits.competitor_remaining <= 0) {
+    return sendJson(res, { error: competitorLimitError(limits.competitor_limit), limits: companyLimitPayload(context.access.company_id) }, 409);
+  }
   addCompanyCompetitor({
     companyId: context.access.company_id,
     competitorName,
@@ -2501,16 +2552,28 @@ async function handleGenerateSetup(req, res) {
     let competitors = listCompanyCompetitors(companyId);
 
     if (!competitors.length) {
+      const limits = getCompanyLimits(companyId);
+
+      if (limits.competitor_remaining <= 0) {
+        return sendJson(res, { error: competitorLimitError(limits.competitor_limit), limits: companyLimitPayload(companyId) }, 409);
+      }
+
       const discoveredCompetitors = await AIService.discoverCompetitors(context.access, analysis);
-      upsertCompanyCompetitors(companyId, discoveredCompetitors, 'gemini');
+      upsertCompanyCompetitors(companyId, discoveredCompetitors.slice(0, limits.competitor_remaining), 'gemini');
       competitors = listCompanyCompetitors(companyId);
     }
 
     let prompts = listCompanyPrompts(companyId);
 
     if (!prompts.length) {
+      const limits = getCompanyLimits(companyId);
+
+      if (limits.prompt_remaining <= 0) {
+        return sendJson(res, { error: promptLimitError(limits.prompt_limit), limits: companyLimitPayload(companyId) }, 409);
+      }
+
       const generatedPrompts = await AIService.generateCompanyPrompts(context.access, analysis);
-      replaceCompanyPrompts(companyId, generatedPrompts, 'gemini');
+      replaceCompanyPrompts(companyId, generatedPrompts.slice(0, limits.prompt_remaining), 'gemini');
       prompts = listCompanyPrompts(companyId);
     }
 
@@ -2636,6 +2699,7 @@ function handlePrompts(req, res) {
   return sendJson(res, {
     prompts: enrichPrompts(prompts),
     summary: promptSummary(prompts),
+    limits: companyLimitPayload(context.access.company_id),
     canManage: CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)
   });
 }
@@ -2663,6 +2727,11 @@ async function handleAddPrompt(req, res) {
     return sendJson(res, { error: 'Please fix the highlighted fields.', errors }, 422);
   }
 
+  const limits = getCompanyLimits(context.access.company_id);
+  if (limits.prompt_remaining <= 0) {
+    return sendJson(res, { error: promptLimitError(limits.prompt_limit), limits: companyLimitPayload(context.access.company_id) }, 409);
+  }
+
   addCompanyPrompt({
     companyId: context.access.company_id,
     promptText,
@@ -2677,6 +2746,7 @@ async function handleAddPrompt(req, res) {
     ok: true,
     prompts: enrichPrompts(prompts),
     summary: promptSummary(prompts),
+    limits: companyLimitPayload(context.access.company_id),
     canManage: true
   }, 201);
 }
@@ -2690,6 +2760,7 @@ function handleCompetitors(req, res) {
 
   return sendJson(res, {
     competitors: listCompanyCompetitors(context.access.company_id),
+    limits: companyLimitPayload(context.access.company_id),
     canManage: CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)
   });
 }
@@ -2717,6 +2788,11 @@ async function handleAddCompetitor(req, res) {
     return sendJson(res, { error: 'Please fix the highlighted fields.', errors }, 422);
   }
 
+  const limits = getCompanyLimits(context.access.company_id);
+  if (limits.competitor_remaining <= 0) {
+    return sendJson(res, { error: competitorLimitError(limits.competitor_limit), limits: companyLimitPayload(context.access.company_id) }, 409);
+  }
+
   addCompanyCompetitor({
     companyId: context.access.company_id,
     competitorName,
@@ -2728,6 +2804,7 @@ async function handleAddCompetitor(req, res) {
   return sendJson(res, {
     ok: true,
     competitors: listCompanyCompetitors(context.access.company_id),
+    limits: companyLimitPayload(context.access.company_id),
     canManage: true
   }, 201);
 }
@@ -3048,6 +3125,50 @@ async function handleDeveloperDeleteCompany(req, res) {
   });
 }
 
+async function handleDeveloperUpdateCompanyLimits(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const companyId = Number(body.companyId);
+  const promptLimit = Number(body.promptLimit);
+  const competitorLimit = Number(body.competitorLimit);
+  const errors = {};
+
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    errors.companyId = 'Select a valid company.';
+  }
+
+  if (!Number.isInteger(promptLimit) || promptLimit < 0 || promptLimit > 500) {
+    errors.promptLimit = 'Prompt limit must be between 0 and 500.';
+  }
+
+  if (!Number.isInteger(competitorLimit) || competitorLimit < 0 || competitorLimit > 200) {
+    errors.competitorLimit = 'Competitor limit must be between 0 and 200.';
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix company limits.', errors }, 422);
+  }
+
+  updateCompanyLimits(companyId, { promptLimit, competitorLimit });
+
+  return sendJson(res, {
+    ok: true,
+    stats: getPlatformStats(),
+    companies: listAllCompaniesForDeveloper(),
+    users: listAllUsersForDeveloper(),
+    accessRecords: listWorkspaceAccessForDeveloper()
+  });
+}
+
 async function handleDeveloperRemoveAccess(req, res) {
   const session = requireSession(req, res);
 
@@ -3259,6 +3380,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/developer/companies/delete') {
       return handleDeveloperDeleteCompany(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/developer/companies/limits') {
+      return handleDeveloperUpdateCompanyLimits(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/developer/access/remove') {

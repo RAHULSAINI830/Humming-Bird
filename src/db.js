@@ -99,6 +99,8 @@ function migrate() {
       company_name TEXT NOT NULL,
       website_url TEXT,
       logo_url TEXT,
+      prompt_limit INTEGER NOT NULL DEFAULT 15,
+      competitor_limit INTEGER NOT NULL DEFAULT 10,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -433,7 +435,9 @@ function migrate() {
     ['target_audience', 'TEXT'],
     ['onboarding_completed', 'INTEGER DEFAULT 0'],
     ['onboarding_completed_at', 'TEXT'],
-    ['status', "TEXT NOT NULL DEFAULT 'active'"]
+    ['status', "TEXT NOT NULL DEFAULT 'active'"],
+    ['prompt_limit', 'INTEGER NOT NULL DEFAULT 15'],
+    ['competitor_limit', 'INTEGER NOT NULL DEFAULT 10']
   ].forEach(([columnName, columnType]) => {
     if (!companyColumns.includes(columnName)) {
       db.exec(`ALTER TABLE companies ADD COLUMN ${columnName} ${columnType};`);
@@ -698,6 +702,63 @@ function listActiveCompanies() {
   `).all();
 }
 
+function getCompanyLimits(companyId) {
+  const company = db.prepare(`
+    SELECT
+      id AS company_id,
+      COALESCE(prompt_limit, 15) AS prompt_limit,
+      COALESCE(competitor_limit, 10) AS competitor_limit
+    FROM companies
+    WHERE id = ?
+  `).get(companyId);
+
+  if (!company) {
+    return {
+      prompt_limit: 15,
+      competitor_limit: 10,
+      prompt_count: 0,
+      competitor_count: 0,
+      prompt_remaining: 15,
+      competitor_remaining: 10
+    };
+  }
+
+  const promptCount = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM company_prompts
+    WHERE company_id = ?
+      AND status = 'active'
+  `).get(companyId).count;
+  const competitorCount = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM company_competitors
+    WHERE company_id = ?
+      AND status = 'active'
+  `).get(companyId).count;
+  const promptLimit = Math.max(0, Number(company.prompt_limit || 0));
+  const competitorLimit = Math.max(0, Number(company.competitor_limit || 0));
+
+  return {
+    prompt_limit: promptLimit,
+    competitor_limit: competitorLimit,
+    prompt_count: Number(promptCount || 0),
+    competitor_count: Number(competitorCount || 0),
+    prompt_remaining: Math.max(promptLimit - Number(promptCount || 0), 0),
+    competitor_remaining: Math.max(competitorLimit - Number(competitorCount || 0), 0)
+  };
+}
+
+function updateCompanyLimits(companyId, { promptLimit, competitorLimit }) {
+  return db.prepare(`
+    UPDATE companies
+    SET
+      prompt_limit = ?,
+      competitor_limit = ?,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(promptLimit, competitorLimit, companyId);
+}
+
 function getDeveloperCompanyAccess(companyId) {
   return db.prepare(`
     SELECT
@@ -714,6 +775,8 @@ function getDeveloperCompanyAccess(companyId) {
       c.target_audience,
       c.onboarding_completed,
       c.onboarding_completed_at,
+      COALESCE(c.prompt_limit, 15) AS prompt_limit,
+      COALESCE(c.competitor_limit, 10) AS competitor_limit,
       c.status,
       r.id AS role_id,
       r.role_name
@@ -739,6 +802,8 @@ function getUserCompanyAccess(userId, companyId) {
       c.target_audience,
       c.onboarding_completed,
       c.onboarding_completed_at,
+      COALESCE(c.prompt_limit, 15) AS prompt_limit,
+      COALESCE(c.competitor_limit, 10) AS competitor_limit,
       c.status,
       r.id AS role_id,
       r.role_name
@@ -944,6 +1009,8 @@ function listAllCompaniesForDeveloper() {
       c.company_name,
       c.website_url,
       c.industry,
+      COALESCE(c.prompt_limit, 15) AS prompt_limit,
+      COALESCE(c.competitor_limit, 10) AS competitor_limit,
       c.onboarding_completed,
       c.created_at,
       c.status,
@@ -2104,6 +2171,8 @@ module.exports = {
   userHasRole,
   getAllCompaniesForWorkspace,
   listActiveCompanies,
+  getCompanyLimits,
+  updateCompanyLimits,
   getDeveloperCompanyAccess,
   getRoleByName,
   listCompanyUsers,

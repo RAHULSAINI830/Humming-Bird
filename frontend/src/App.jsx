@@ -280,6 +280,9 @@ function App() {
         setActiveView('dashboard');
       }
     } catch (error) {
+      if (error.data?.limits) {
+        setSetupStatus((current) => current ? ({ ...current, limits: error.data.limits }) : current);
+      }
       setSetupError(error.message);
     } finally {
       setSetupLoading(false);

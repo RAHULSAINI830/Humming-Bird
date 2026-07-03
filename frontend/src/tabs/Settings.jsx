@@ -8,6 +8,7 @@ export default function Settings({ data, onChange, onRefreshVisibility, workspac
   const progress = data?.setupProgress || {};
   const promptsSummary = data?.promptsSummary || {};
   const competitors = data?.competitors || [];
+  const limits = data?.limits || {};
   const visibilityRuns = data?.visibilityRuns || [];
   const analysisStatus = data?.analysis?.analysis_status || 'Not started';
   const healthProgress = company?.onboarding_completed ? 100 : progress.percentage || 0;
@@ -65,9 +66,9 @@ export default function Settings({ data, onChange, onRefreshVisibility, workspac
       </article>
 
       <div className="settings-metric-grid">
-        <SettingsMetric icon="file" title="Prompts" value={promptsSummary.total ?? 0} helper="Total saved prompts" />
+        <SettingsMetric icon="file" title="Prompts" value={promptsSummary.total ?? 0} helper={limits.prompts ? `${limits.prompts.used}/${limits.prompts.limit} used` : 'Total saved prompts'} />
         <SettingsMetric icon="checkCircle" title="Prompt Checks" value={promptsSummary.checked ?? 0} helper="Completed checks" />
-        <SettingsMetric icon="building" title="Competitors" value={competitors.length} helper="Tracked companies" />
+        <SettingsMetric icon="building" title="Competitors" value={competitors.length} helper={limits.competitors ? `${limits.competitors.used}/${limits.competitors.limit} used` : 'Tracked companies'} />
         <SettingsMetric icon="trend" title="Analysis" value={analysisStatus} helper="Saved AI status" />
       </div>
 

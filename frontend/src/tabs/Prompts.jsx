@@ -5,6 +5,8 @@ import { ChipList, EmptyInline, IconButton, Input, Metric, PageHeader, ProviderL
 export default function Prompts({ data, onChange, workspace }) {
   const prompts = data?.prompts || [];
   const summary = data?.summary || {};
+  const promptLimit = data?.limits?.prompts;
+  const promptLimitReached = Boolean(promptLimit?.reached);
   const [selectedPrompt, setSelectedPrompt] = useState(null);
   const [activeProvider, setActiveProvider] = useState('gemini');
   const [addOpen, setAddOpen] = useState(false);
@@ -35,6 +37,9 @@ export default function Prompts({ data, onChange, workspace }) {
     } catch (error) {
       setMessage(error.message);
       setErrors(error.data?.errors || {});
+      if (error.data?.limits && data) {
+        onChange({ ...data, limits: error.data.limits });
+      }
     } finally {
       setSaving(false);
     }
@@ -47,17 +52,33 @@ export default function Prompts({ data, onChange, workspace }) {
         title="Prompt visibility table"
         subtitle="All generated and manual prompts from the backend database."
         workspace={workspace}
-        action={data?.canManage ? <IconButton label="Add prompt" onClick={() => setAddOpen(true)} /> : null}
+        action={data?.canManage ? (
+          promptLimitReached ? (
+            <span className="limit-reached-pill">Prompt limit reached</span>
+          ) : (
+            <IconButton label="Add prompt" onClick={() => setAddOpen(true)} />
+          )
+        ) : null}
       />
 
       <div className="metric-grid">
-        <Metric title="Total Prompts" value={summary.total ?? prompts.length} helper="Generated and manual prompts" />
+        <Metric title="Total Prompts" value={summary.total ?? prompts.length} helper={promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts used` : 'Generated and manual prompts'} />
         <Metric title="Checked Prompts" value={summary.checked ?? 0} helper="Prompts sent to Hummingbird AI" />
         <Metric title="Brand Mentioned" value={summary.brandMentioned ?? 0} helper="Exact response contains brand" />
         <Metric title="Citation Ideas" value={summary.citations ?? 0} helper="Recommended citation pages" />
       </div>
 
       {message ? <div className={Object.keys(errors).length ? 'notice' : 'success-notice'}>{message}</div> : null}
+      {promptLimitReached ? (
+        <div className="info-notice limit-info-notice">
+          This workspace has used all {promptLimit.limit} prompts. Ask a Developer to increase the workspace prompt limit.
+        </div>
+      ) : null}
+
+      <div className="limit-usage-strip">
+        <span>{promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts used` : `${prompts.length} prompts saved`}</span>
+        {promptLimit ? <b>{promptLimit.remaining} remaining</b> : null}
+      </div>
 
       <div className="table-panel">
       <table>
@@ -117,7 +138,7 @@ export default function Prompts({ data, onChange, workspace }) {
           <Input label="Prompt Text" value={form.promptText} error={errors.promptText} onChange={(value) => update('promptText', value)} />
           <Input label="Category" value={form.promptCategory} optional onChange={(value) => update('promptCategory', value)} />
           <Input label="Intent" value={form.promptIntent} optional onChange={(value) => update('promptIntent', value)} />
-          <button className="primary-button" type="submit" disabled={saving}>{saving ? 'Adding…' : 'Add Prompt'}</button>
+          <button className="primary-button" type="submit" disabled={saving || promptLimitReached}>{saving ? 'Adding…' : 'Add Prompt'}</button>
         </form>
       </SideFormTray>
     </section>
