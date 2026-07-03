@@ -878,6 +878,7 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
   const citationDomainMap = new Map();
   const brandTrendMap = new Map();
   const domainTrendMap = new Map();
+  const competitorMetaMap = new Map();
   const companyDomain = hostnameFromUrl(company?.website_url);
 
   checkedPrompts.forEach((prompt) => {
@@ -888,7 +889,15 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
     }
 
     prompt.competitor_mentions_parsed.forEach((competitor) => {
-      incrementMap(competitorMap, competitor.competitor_name || competitor.name || competitor.company_name || 'Unknown competitor');
+      const competitorName = competitor.competitor_name || competitor.name || competitor.company_name || 'Unknown competitor';
+      incrementMap(competitorMap, competitorName);
+
+      if (!competitorMetaMap.has(competitorName)) {
+        competitorMetaMap.set(competitorName, {
+          website_url: competitor.website_url || competitor.url || '',
+          logo_url: competitor.logo_url || ''
+        });
+      }
     });
 
     prompt.recommended_citations_parsed.forEach((citation) => {
@@ -910,6 +919,8 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
     {
       name: company?.company_name || 'Your brand',
       type: 'own',
+      website_url: company?.website_url || '',
+      logo_url: company?.logo_url || '',
       mentions: brandMentioned,
       coverage: checkedPrompts.length ? Math.round((brandMentioned / checkedPrompts.length) * 100) : 0,
       share: mentionUniverse ? Math.round((brandMentioned / mentionUniverse) * 100) : 0
@@ -917,6 +928,8 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
     ...competitorRows.map((competitor) => ({
       name: competitor.name,
       type: 'competitor',
+      website_url: competitorMetaMap.get(competitor.name)?.website_url || '',
+      logo_url: competitorMetaMap.get(competitor.name)?.logo_url || '',
       mentions: competitor.count,
       coverage: checkedPrompts.length ? Math.round((competitor.count / checkedPrompts.length) * 100) : 0,
       share: mentionUniverse ? Math.round((competitor.count / mentionUniverse) * 100) : 0
@@ -999,12 +1012,16 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
         {
           name: company?.company_name || 'Your brand',
           type: 'own',
+          website_url: company?.website_url || '',
+          logo_url: company?.logo_url || '',
           mentions: run.brandMentioned,
           value: Math.round((run.brandMentioned / totalPrompts) * 100)
         },
         ...competitorsForRun.map((competitor) => ({
           name: competitor.name,
           type: 'competitor',
+          website_url: competitorMetaMap.get(competitor.name)?.website_url || '',
+          logo_url: competitorMetaMap.get(competitor.name)?.logo_url || '',
           mentions: competitor.count,
           value: Math.round((competitor.count / totalPrompts) * 100)
         }))

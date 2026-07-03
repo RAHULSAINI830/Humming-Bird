@@ -111,8 +111,8 @@ export default function Dashboard({ data, session, workspace, goTo }) {
             value={displayVisibility.brandMentioned ?? 0}
             subtitle={`${checkedPrompts} prompts checked`}
             rows={[
-              [ownBrand?.name || session.selectedCompanyName, displayVisibility.brandMentioned ?? 0, hasRealData ? '+12%' : '—'],
-              ...competitorRows.slice(0, 2).map((item) => [item.name, item.mentions, `${item.coverage ?? 0}%`])
+              { brand: ownBrand || { name: session.selectedCompanyName, website_url: company.website_url, logo_url: company.logo_url }, count: displayVisibility.brandMentioned ?? 0, delta: hasRealData ? '+12%' : '—' },
+              ...competitorRows.slice(0, 2).map((item) => ({ brand: item, count: item.mentions, delta: `${item.coverage ?? 0}%` }))
             ]}
           />
           <OverviewInsightCard
@@ -120,8 +120,8 @@ export default function Dashboard({ data, session, workspace, goTo }) {
             value={displayVisibility.averagePosition ?? 0}
             subtitle="Position trend"
             rows={[
-              [ownBrand?.name || session.selectedCompanyName, displayVisibility.averagePosition ?? 0, hasRealData ? '+4' : '—'],
-              ...competitorRows.slice(0, 2).map((item) => [item.name, item.position ?? 0, `${item.share ?? 0}%`])
+              { brand: ownBrand || { name: session.selectedCompanyName, website_url: company.website_url, logo_url: company.logo_url }, count: displayVisibility.averagePosition ?? 0, delta: hasRealData ? '+4' : '—' },
+              ...competitorRows.slice(0, 2).map((item) => ({ brand: item, count: item.position ?? 0, delta: `${item.share ?? 0}%` }))
             ]}
           />
         </div>
@@ -198,6 +198,12 @@ function BrandCoverageChart({ rows, trend }) {
     });
   });
   const visibleBrandNames = brandNames.slice(0, 5);
+  const brandByName = new Map();
+  [...fallbackBrands, ...chartPoints.flatMap((point) => point.brands || [])].forEach((brand) => {
+    if (brand?.name && !brandByName.has(brand.name)) {
+      brandByName.set(brand.name, brand);
+    }
+  });
   const colorForBrand = (name) => colors[Math.max(0, visibleBrandNames.indexOf(name)) % colors.length];
   const hasCoverageData = chartPoints.some((point) => (point.brands || []).length || Number(point.value || 0) > 0);
 
@@ -233,7 +239,7 @@ function BrandCoverageChart({ rows, trend }) {
               {segments.length ? (
                 <div className="brand-chart-tooltip" aria-hidden="true">
                   {segments.map((item) => (
-                    <p key={item.name}><i style={{ background: item.color }} />{item.name}<b>{item.value}%</b></p>
+                    <p key={item.name}><LogoChip name={item.name} url={brandLogoUrl(item)} /><span>{item.name}</span><b>{item.value}%</b></p>
                   ))}
                 </div>
               ) : null}
@@ -246,7 +252,11 @@ function BrandCoverageChart({ rows, trend }) {
       {visibleBrandNames.length ? (
         <div className="brand-chart-legend">
           {visibleBrandNames.map((name) => (
-            <span key={name}><i style={{ background: colorForBrand(name) }} />{name}</span>
+            <span key={name}>
+              <LogoChip name={name} url={brandLogoUrl(brandByName.get(name))} />
+              <i style={{ background: colorForBrand(name) }} />
+              <b>{name}</b>
+            </span>
           ))}
         </div>
       ) : null}
@@ -265,14 +275,19 @@ function OverviewInsightCard({ title, value, subtitle, rows }) {
         <strong>{value}</strong>
       </div>
       <div className="overview-insight-list">
-        {(rows || []).slice(0, 3).map(([name, count, delta]) => (
+        {(rows || []).slice(0, 3).map((row) => {
+          const brand = row.brand || { name: row.name };
+          const name = brand.name || 'Brand';
+
+          return (
           <p key={`${title}-${name}`}>
-            <LogoChip name={name} />
+            <LogoChip name={name} url={brandLogoUrl(brand)} />
             <span>{name}</span>
-            <b>{count}</b>
-            <em>{delta}</em>
+            <b>{row.count}</b>
+            <em>{row.delta}</em>
           </p>
-        ))}
+          );
+        })}
       </div>
     </article>
   );
@@ -414,7 +429,7 @@ function DomainCitationsCard({ rows, onReport }) {
       <div className="domain-citations-list">
         {validRows.slice(0, 4).map((row) => (
           <p key={row.domain}>
-            <LogoChip name={row.domain} />
+            <LogoChip name={row.domain} url={`https://${row.domain}`} />
             <span>{row.domain}</span>
             <b>{row.citations}</b>
           </p>
@@ -447,7 +462,7 @@ function DashboardRankingTable({ rows, onReport }) {
           {rows.slice(0, 10).map((row, index) => (
             <tr key={`${row.name}-${index}`}>
               <td>{index + 1}</td>
-              <td className="overview-brand-cell"><LogoChip name={row.name} /><span>{row.name}</span></td>
+              <td className="overview-brand-cell"><LogoChip name={row.name} url={brandLogoUrl(row)} /><span>{row.name}</span></td>
               <td><span className={`overview-sentiment-pill ${row.mentions ? 'positive' : 'neutral'}`}>{row.mentions ? `+${row.mentions}` : 'N/A'}</span></td>
               <td>{row.mentions}</td>
               <td>{row.coverage}%</td>
@@ -490,7 +505,7 @@ function DashboardCitationTable({ rows, onReport }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No citations yet" text="Citation tables fill when checked prompts return recommended source pages." />;
 
   return (
-    <>
+    <div className="overview-table-with-report">
       <table className="dashboard-data-table overview-data-table">
         <thead><tr><th>Rank</th><th>URL</th><th>Citation share</th><th>Citation</th></tr></thead>
         <tbody>
@@ -505,7 +520,7 @@ function DashboardCitationTable({ rows, onReport }) {
         </tbody>
       </table>
       <button type="button" className="overview-table-report-button" onClick={onReport}>View Full Report</button>
-    </>
+    </div>
   );
 }
 
@@ -546,7 +561,7 @@ function VisibilityIndex({ rows }) {
           <div className="visibility-rank-row" key={`${row.name}-${index}`}>
             <div className="visibility-rank-track">
               <span className="visibility-rank-fill" style={{ width: `${width}%` }}>
-                <span className="visibility-rank-label"><i />{row.name}</span>
+                <span className="visibility-rank-label"><LogoChip name={row.name} url={brandLogoUrl(row)} />{row.name}</span>
                 <b>{index + 1}</b>
               </span>
             </div>
@@ -556,6 +571,16 @@ function VisibilityIndex({ rows }) {
       {!plotted.length ? <DashboardEmptyOverlay title="No visibility index yet" text="Run prompt checks to map brand coverage vs mention share." /> : null}
     </div>
   );
+}
+
+function brandLogoUrl(brand) {
+  if (!brand) return '';
+
+  if (typeof brand === 'string') {
+    return /^https?:\/\//i.test(brand) || brand.includes('.') ? brand : '';
+  }
+
+  return brand.logo_url || brand.website_url || brand.url || '';
 }
 
 function DashboardEmptyOverlay({ title, text }) {

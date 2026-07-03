@@ -2062,7 +2062,7 @@ button {
   gap: 22px;
   align-items: end;
   min-height: 440px;
-  padding: 42px 62px 42px;
+  padding: 42px 62px 58px;
   border: 0;
   border-radius: 0;
   background:
@@ -2075,7 +2075,7 @@ button {
   content: "";
   position: absolute;
   right: 0;
-  bottom: 42px;
+  bottom: 58px;
   left: 62px;
   height: 1px;
   background: #dfe3ea;
@@ -2085,7 +2085,7 @@ button {
 .brand-chart-y-axis {
   position: absolute;
   top: 42px;
-  bottom: 42px;
+  bottom: 58px;
   left: 32px;
   z-index: 2;
   display: flex;
@@ -2111,7 +2111,7 @@ button {
 .brand-chart-column {
   position: relative;
   display: grid;
-  height: 356px;
+  height: 340px;
   align-items: end;
   justify-items: center;
 }
@@ -2154,11 +2154,11 @@ button {
 
 .brand-chart-column small {
   position: absolute;
-  bottom: -28px;
+  bottom: -36px;
   left: 50%;
   color: var(--primary);
-  font-size: 14px;
-  font-weight: 850;
+  font-size: 13px;
+  font-weight: 420;
   transform: translateX(-50%);
   white-space: nowrap;
 }
@@ -2174,16 +2174,27 @@ button {
 .brand-chart-legend span {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  color: var(--primary);
+  gap: 7px;
+  color: #050816;
   font-size: 13px;
-  font-weight: 820;
+  font-weight: 420;
+}
+
+.brand-chart-legend .logo-chip {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
 }
 
 .brand-chart-legend i {
   width: 11px;
   height: 11px;
   border-radius: 1px;
+}
+
+.brand-chart-legend b {
+  color: #050816;
+  font-weight: 420;
 }
 
 .brand-chart-tooltip {
@@ -2210,26 +2221,35 @@ button {
 
 .brand-chart-tooltip p {
   display: grid;
-  grid-template-columns: 13px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   margin: 0;
-  color: var(--primary);
+  color: #050816;
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 420;
+}
+
+.brand-chart-tooltip .logo-chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
 }
 
 .brand-chart-tooltip p+p {
   margin-top: 8px;
 }
 
-.brand-chart-tooltip i {
-  width: 11px;
-  height: 11px;
+.brand-chart-tooltip span {
+  overflow: hidden;
+  color: #050816;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-chart-tooltip b {
   font-size: 15px;
+  font-weight: 520;
 }
 
 .overview-insights-column {
@@ -2414,6 +2434,9 @@ button {
 }
 
 .overview-table-grid .dashboard-panel {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
   box-shadow: none;
 }
 
@@ -2616,6 +2639,11 @@ button {
   justify-content: space-between;
   min-height: 332px;
   padding: 28px 18px 20px;
+}
+
+.domain-citations-card .overview-table-report-button {
+  margin-top: auto;
+  align-self: flex-start;
 }
 
 .domain-citations-total {
@@ -2843,6 +2871,18 @@ button {
   font-size: 9px;
 }
 
+.overview-table-with-report {
+  display: flex;
+  flex: 1;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.overview-table-with-report .overview-table-report-button {
+  width: fit-content;
+  margin-top: auto;
+}
+
 .overview-brand-cell>span {
   min-width: 0;
   overflow: hidden;
@@ -2974,12 +3014,16 @@ button {
   text-shadow: 0 1px 2px rgba(0, 1, 66, 0.28);
 }
 
-.visibility-rank-label i {
-  display: block;
-  width: 13px;
-  height: 13px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.78);
+.visibility-rank-label .logo-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.visibility-rank-label .logo-chip span {
+  font-size: 8px;
 }
 
 .visibility-rank-fill b {
