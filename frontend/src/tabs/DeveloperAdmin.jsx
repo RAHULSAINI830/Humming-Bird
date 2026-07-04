@@ -7,6 +7,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const companies = data?.companies || [];
   const users = data?.users || [];
   const accessRecords = data?.accessRecords || [];
+  const providerControlsByCompany = data?.providerControlsByCompany || {};
   const [message, setMessage] = useState('');
   const [deletingCompanyId, setDeletingCompanyId] = useState(null);
   const [removingAccessId, setRemovingAccessId] = useState(null);
@@ -22,6 +23,10 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const [workspaceLimitForm, setWorkspaceLimitForm] = useState({});
   const [workspaceLimitErrors, setWorkspaceLimitErrors] = useState({});
   const [savingWorkspaceLimit, setSavingWorkspaceLimit] = useState(false);
+  const [providerCompany, setProviderCompany] = useState(null);
+  const [providerForms, setProviderForms] = useState({});
+  const [providerErrors, setProviderErrors] = useState({});
+  const [savingProvider, setSavingProvider] = useState('');
 
   if (!data) {
     return <EmptyInline title="Loading Developer Admin" text="Fetching platform-wide companies, users, and access records." />;
@@ -98,6 +103,36 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
     setWorkspaceLimitForm({
       workspaceLimit: String(user.workspace_limit ?? 1)
     });
+  }
+
+  function openProviderEditor(company) {
+    const controls = providerControlsByCompany[company.company_id] || [];
+    const forms = {};
+
+    controls.forEach((control) => {
+      forms[control.provider_name] = {
+        status: control.status || 'disabled',
+        dailyPromptLimit: String(control.daily_prompt_limit ?? 0),
+        monthlyPromptLimit: String(control.monthly_prompt_limit ?? 0),
+        monthlyCostLimitCents: String(control.monthly_cost_limit_cents ?? 0),
+        autoRefreshEnabled: Number(control.auto_refresh_enabled || 0) === 1,
+        manualRefreshEnabled: Number(control.manual_refresh_enabled || 0) === 1
+      };
+    });
+
+    setProviderCompany(company);
+    setProviderForms(forms);
+    setProviderErrors({});
+  }
+
+  function updateProviderForm(providerName, key, value) {
+    setProviderForms((current) => ({
+      ...current,
+      [providerName]: {
+        ...(current[providerName] || {}),
+        [key]: value
+      }
+    }));
   }
 
   async function saveCompanyLimits(event) {
@@ -192,6 +227,39 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
     }
   }
 
+  async function saveProviderControl(providerName) {
+    if (!providerCompany) return;
+
+    const form = providerForms[providerName] || {};
+
+    setSavingProvider(providerName);
+    setProviderErrors({});
+    setMessage('');
+
+    try {
+      const result = await api('/api/developer/companies/provider-control', {
+        method: 'POST',
+        body: JSON.stringify({
+          companyId: providerCompany.company_id,
+          providerName,
+          status: form.status || 'disabled',
+          dailyPromptLimit: Number(form.dailyPromptLimit || 0),
+          monthlyPromptLimit: Number(form.monthlyPromptLimit || 0),
+          monthlyCostLimitCents: Number(form.monthlyCostLimitCents || 0),
+          autoRefreshEnabled: Boolean(form.autoRefreshEnabled),
+          manualRefreshEnabled: Boolean(form.manualRefreshEnabled)
+        })
+      });
+      onChange(result);
+      setMessage(`${providerLabel(providerName)} controls updated for ${providerCompany.company_name}.`);
+    } catch (error) {
+      setMessage(error.message);
+      setProviderErrors(error.data?.errors || {});
+    } finally {
+      setSavingProvider('');
+    }
+  }
+
   return (
     <section className="page-content">
       <PageHeader
@@ -263,6 +331,13 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
                       onClick={() => openAutomationEditor(company)}
                     >
                       Automation
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-action-button"
+                      onClick={() => openProviderEditor(company)}
+                    >
+                      AI providers
                     </button>
                     <button
                       type="button"
@@ -485,6 +560,118 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
       </SideFormTray>
 
       <SideFormTray
+        open={Boolean(providerCompany)}
+        title="AI provider controls"
+        eyebrow="Paid provider control"
+        onClose={() => setProviderCompany(null)}
+      >
+        <div className="tray-form">
+          <div className="limit-editor-summary">
+            <LogoChip name={providerCompany?.company_name || 'Company'} url={providerCompany?.logo_url || providerCompany?.website_url} />
+            <div>
+              <strong>{providerCompany?.company_name}</strong>
+              <small>Enable ChatGPT only for approved companies and cap daily prompts, monthly prompts, and estimated spend.</small>
+            </div>
+          </div>
+
+          {(providerControlsByCompany[providerCompany?.company_id] || []).map((control) => {
+            const form = providerForms[control.provider_name] || {};
+            const isPaid = ['openai', 'claude', 'perplexity'].includes(control.provider_name);
+            return (
+              <article className={`provider-control-card ${control.provider_name}`} key={control.provider_name}>
+                <div className="provider-control-head">
+                  <div>
+                    <span className="eyebrow">{isPaid ? 'Paid provider' : 'Primary provider'}</span>
+                    <h3>{providerLabel(control.provider_name)}</h3>
+                  </div>
+                  <StatusBadge active={form.status === 'enabled'}>{form.status || 'disabled'}</StatusBadge>
+                </div>
+
+                <label className="field">
+                  <span>Status <em>Required</em></span>
+                  <span className="input-shell">
+                    <select
+                      value={form.status || 'disabled'}
+                      onChange={(event) => updateProviderForm(control.provider_name, 'status', event.target.value)}
+                    >
+                      <option value="enabled">Enabled</option>
+                      <option value="paused">Paused temporarily</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                  </span>
+                  {providerErrors.status ? <strong>{providerErrors.status}</strong> : null}
+                </label>
+
+                <div className="provider-limit-grid">
+                  <Input
+                    label="Daily prompts"
+                    type="number"
+                    value={form.dailyPromptLimit}
+                    error={providerErrors.dailyPromptLimit}
+                    onChange={(value) => updateProviderForm(control.provider_name, 'dailyPromptLimit', value)}
+                  />
+                  <Input
+                    label="Monthly prompts"
+                    type="number"
+                    value={form.monthlyPromptLimit}
+                    error={providerErrors.monthlyPromptLimit}
+                    onChange={(value) => updateProviderForm(control.provider_name, 'monthlyPromptLimit', value)}
+                  />
+                  <Input
+                    label="Monthly cost cap cents"
+                    type="number"
+                    value={form.monthlyCostLimitCents}
+                    error={providerErrors.monthlyCostLimitCents}
+                    onChange={(value) => updateProviderForm(control.provider_name, 'monthlyCostLimitCents', value)}
+                  />
+                </div>
+
+                <div className="provider-usage-row">
+                  <span>{control.daily_prompts_used || 0}/{control.daily_prompt_limit || 0} daily prompts</span>
+                  <span>{control.monthly_prompts_used || 0}/{control.monthly_prompt_limit || 0} monthly prompts</span>
+                  <span>${((control.monthly_cost_used_cents || 0) / 100).toFixed(2)} used</span>
+                </div>
+
+                <div className="provider-toggle-row">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.manualRefreshEnabled)}
+                      onChange={(event) => updateProviderForm(control.provider_name, 'manualRefreshEnabled', event.target.checked)}
+                    />
+                    Manual refresh
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.autoRefreshEnabled)}
+                      onChange={(event) => updateProviderForm(control.provider_name, 'autoRefreshEnabled', event.target.checked)}
+                    />
+                    Daily auto refresh
+                  </label>
+                </div>
+
+                {control.provider_name === 'openai' ? (
+                  <p className="provider-control-note">
+                    ChatGPT uses the platform OPENAI_API_KEY. Keep auto refresh off until you are comfortable with spend.
+                  </p>
+                ) : null}
+
+                <button
+                  className="secondary-action-button"
+                  type="button"
+                  onClick={() => saveProviderControl(control.provider_name)}
+                  disabled={savingProvider === control.provider_name}
+                >
+                  {savingProvider === control.provider_name ? 'Saving…' : `Save ${providerLabel(control.provider_name)}`}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+      </SideFormTray>
+
+      <SideFormTray
         open={Boolean(workspaceLimitUser)}
         title="Owner workspace limit"
         eyebrow="Developer control"
@@ -542,4 +729,15 @@ function automationMeta(company) {
   }
 
   return company.last_auto_refresh_at ? `Last ${company.last_auto_refresh_at}` : 'No auto refresh yet';
+}
+
+function providerLabel(providerName) {
+  const labels = {
+    gemini: 'Hummingbird AI',
+    openai: 'ChatGPT',
+    claude: 'Claude',
+    perplexity: 'Perplexity'
+  };
+
+  return labels[providerName] || providerName;
 }

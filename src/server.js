@@ -19,6 +19,9 @@ const {
   markCompanyAutoRefreshed,
   getUserWorkspaceCreationLimit,
   updateUserWorkspaceLimit,
+  getCompanyAiProviderControls,
+  updateCompanyAiProviderControl,
+  logAiProviderUsage,
   getDeveloperCompanyAccess,
   listCompanyUsers,
   countCompanyBusinessOwners,
@@ -739,6 +742,44 @@ function promptLimitError(limit) {
 
 function competitorLimitError(limit) {
   return `Competitor limit reached. This workspace can track up to ${limit} competitors. Contact your administrator to increase the limit.`;
+}
+
+function logProviderUsageFromResults(companyId, runId, results) {
+  (results || []).forEach((result) => {
+    const usageEntries = Array.isArray(result.provider_usage)
+      ? result.provider_usage
+      : (result.provider_usage ? [result.provider_usage] : []);
+
+    usageEntries.forEach((usage) => {
+      logAiProviderUsage({
+        companyId,
+        providerName: usage.provider_name,
+        promptId: usage.prompt_id || result.prompt_id,
+        runId,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        estimatedCostCents: usage.estimated_cost_cents,
+        status: 'completed'
+      });
+    });
+  });
+}
+
+function developerAdminPayload() {
+  const companies = listAllCompaniesForDeveloper();
+  const providerControlsByCompany = {};
+
+  companies.forEach((company) => {
+    providerControlsByCompany[company.company_id] = getCompanyAiProviderControls(company.company_id);
+  });
+
+  return {
+    stats: getPlatformStats(),
+    companies,
+    users: listAllUsersForDeveloper(),
+    accessRecords: listWorkspaceAccessForDeveloper(),
+    providerControlsByCompany
+  };
 }
 
 function buildAeoRecommendationContext(company, analysis, prompts, competitors, visibilitySummary) {
@@ -2464,11 +2505,16 @@ async function handleSetupRunChecks(req, res) {
   }
 
   try {
-    const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis);
-    updatePromptVisibility(companyId, visibilityResults, {
+    const providerControls = getCompanyAiProviderControls(companyId);
+    const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
+      providerControls,
+      refreshType: 'manual'
+    });
+    const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'setup-check',
       sourceType: 'hummingbird-ai'
     });
+    logProviderUsageFromResults(companyId, run.runId, visibilityResults);
     return sendJson(res, setupPipelineStatus(companyId));
   } catch (error) {
     console.error(error);
@@ -2486,11 +2532,16 @@ async function refreshPromptChecksForCompany(companyId) {
     return { skipped: true, reason: 'missing-analysis-competitors-or-prompts' };
   }
 
-  const visibilityResults = await AIService.analyzePromptVisibility(access, prompts, competitors, analysis);
-  updatePromptVisibility(companyId, visibilityResults, {
+  const providerControls = getCompanyAiProviderControls(companyId);
+  const visibilityResults = await AIService.analyzePromptVisibility(access, prompts, competitors, analysis, {
+    providerControls,
+    refreshType: 'auto'
+  });
+  const run = updatePromptVisibility(companyId, visibilityResults, {
     runType: 'daily-refresh',
     sourceType: 'hummingbird-ai'
   });
+  logProviderUsageFromResults(companyId, run.runId, visibilityResults);
 
   return {
     skipped: false,
@@ -2556,6 +2607,7 @@ function settingsPayload(context) {
     promptsSummary: promptSummary(prompts),
     competitors: listCompanyCompetitors(context.access.company_id),
     limits: companyLimitPayload(context.access.company_id),
+    aiProviderControls: getCompanyAiProviderControls(context.access.company_id),
     workspaceCreation: {
       ...workspaceCreation,
       canManage: context.access.role_name === 'Business Owner'
@@ -2751,11 +2803,16 @@ async function handleGenerateSetup(req, res) {
     const summary = promptSummary(prompts);
 
     if (prompts.length && summary.checked === 0) {
-      const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis);
-      updatePromptVisibility(companyId, visibilityResults, {
+      const providerControls = getCompanyAiProviderControls(companyId);
+      const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
+        providerControls,
+        refreshType: 'manual'
+      });
+      const run = updatePromptVisibility(companyId, visibilityResults, {
         runType: 'setup-check',
         sourceType: 'hummingbird-ai'
       });
+      logProviderUsageFromResults(companyId, run.runId, visibilityResults);
     }
 
     return sendJson(res, setupPipelineStatus(companyId));
@@ -3116,11 +3173,16 @@ async function handleSettingsRefreshVisibility(req, res) {
   }
 
   try {
-    const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis);
+    const providerControls = getCompanyAiProviderControls(companyId);
+    const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
+      providerControls,
+      refreshType: 'manual'
+    });
     const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'manual-refresh',
       sourceType: 'hummingbird-ai'
     });
+    logProviderUsageFromResults(companyId, run.runId, visibilityResults);
 
     return sendJson(res, {
       ok: true,
@@ -3259,12 +3321,7 @@ function handleDeveloperAdmin(req, res) {
     return sendJson(res, { error: 'Access denied' }, 403);
   }
 
-  return sendJson(res, {
-    stats: getPlatformStats(),
-    companies: listAllCompaniesForDeveloper(),
-    users: listAllUsersForDeveloper(),
-    accessRecords: listWorkspaceAccessForDeveloper()
-  });
+  return sendJson(res, developerAdminPayload());
 }
 
 function handleDeveloperAiDiagnostics(req, res) {
@@ -3337,13 +3394,7 @@ async function handleDeveloperDeleteCompany(req, res) {
 
   deleteCompany(companyId);
 
-  return sendJson(res, {
-    ok: true,
-    stats: getPlatformStats(),
-    companies: listAllCompaniesForDeveloper(),
-    users: listAllUsersForDeveloper(),
-    accessRecords: listWorkspaceAccessForDeveloper()
-  });
+  return sendJson(res, { ok: true, ...developerAdminPayload() });
 }
 
 async function handleDeveloperUpdateCompanyLimits(req, res) {
@@ -3381,13 +3432,7 @@ async function handleDeveloperUpdateCompanyLimits(req, res) {
 
   updateCompanyLimits(companyId, { promptLimit, competitorLimit });
 
-  return sendJson(res, {
-    ok: true,
-    stats: getPlatformStats(),
-    companies: listAllCompaniesForDeveloper(),
-    users: listAllUsersForDeveloper(),
-    accessRecords: listWorkspaceAccessForDeveloper()
-  });
+  return sendJson(res, { ok: true, ...developerAdminPayload() });
 }
 
 async function handleDeveloperUpdateCompanyAutomation(req, res) {
@@ -3443,13 +3488,72 @@ async function handleDeveloperUpdateCompanyAutomation(req, res) {
     refreshStopReason: refreshStatus === 'stopped' || refreshStopReason ? refreshStopReason : ''
   });
 
-  return sendJson(res, {
-    ok: true,
-    stats: getPlatformStats(),
-    companies: listAllCompaniesForDeveloper(),
-    users: listAllUsersForDeveloper(),
-    accessRecords: listWorkspaceAccessForDeveloper()
+  return sendJson(res, { ok: true, ...developerAdminPayload() });
+}
+
+async function handleDeveloperUpdateCompanyProviderControl(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const companyId = Number(body.companyId);
+  const providerName = normalize(body.providerName).toLowerCase();
+  const status = normalize(body.status || 'disabled').toLowerCase();
+  const dailyPromptLimit = Number(body.dailyPromptLimit);
+  const monthlyPromptLimit = Number(body.monthlyPromptLimit);
+  const monthlyCostLimitCents = Number(body.monthlyCostLimitCents);
+  const autoRefreshEnabled = Boolean(body.autoRefreshEnabled);
+  const manualRefreshEnabled = Boolean(body.manualRefreshEnabled);
+  const errors = {};
+  const allowedProviders = new Set(['gemini', 'openai', 'claude', 'perplexity']);
+  const allowedStatuses = new Set(['enabled', 'disabled', 'paused']);
+
+  if (!Number.isInteger(companyId) || companyId <= 0) {
+    errors.companyId = 'Select a valid company.';
+  }
+
+  if (!allowedProviders.has(providerName)) {
+    errors.providerName = 'Choose a valid AI provider.';
+  }
+
+  if (!allowedStatuses.has(status)) {
+    errors.status = 'Choose enabled, disabled, or paused.';
+  }
+
+  if (!Number.isInteger(dailyPromptLimit) || dailyPromptLimit < 0 || dailyPromptLimit > 10000) {
+    errors.dailyPromptLimit = 'Daily prompt limit must be between 0 and 10,000.';
+  }
+
+  if (!Number.isInteger(monthlyPromptLimit) || monthlyPromptLimit < 0 || monthlyPromptLimit > 250000) {
+    errors.monthlyPromptLimit = 'Monthly prompt limit must be between 0 and 250,000.';
+  }
+
+  if (!Number.isInteger(monthlyCostLimitCents) || monthlyCostLimitCents < 0 || monthlyCostLimitCents > 10000000) {
+    errors.monthlyCostLimitCents = 'Monthly cost cap must be between 0 and 100,000 dollars.';
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix AI provider controls.', errors }, 422);
+  }
+
+  updateCompanyAiProviderControl(companyId, {
+    providerName,
+    status,
+    dailyPromptLimit,
+    monthlyPromptLimit,
+    monthlyCostLimitCents,
+    autoRefreshEnabled,
+    manualRefreshEnabled
   });
+
+  return sendJson(res, { ok: true, ...developerAdminPayload() });
 }
 
 async function handleDeveloperUpdateUserWorkspaceLimit(req, res) {
@@ -3482,13 +3586,7 @@ async function handleDeveloperUpdateUserWorkspaceLimit(req, res) {
 
   updateUserWorkspaceLimit(userId, workspaceLimit);
 
-  return sendJson(res, {
-    ok: true,
-    stats: getPlatformStats(),
-    companies: listAllCompaniesForDeveloper(),
-    users: listAllUsersForDeveloper(),
-    accessRecords: listWorkspaceAccessForDeveloper()
-  });
+  return sendJson(res, { ok: true, ...developerAdminPayload() });
 }
 
 async function handleDeveloperRemoveAccess(req, res) {
@@ -3521,13 +3619,7 @@ async function handleDeveloperRemoveAccess(req, res) {
 
   removeAccessRecordById(accessId);
 
-  return sendJson(res, {
-    ok: true,
-    stats: getPlatformStats(),
-    companies: listAllCompaniesForDeveloper(),
-    users: listAllUsersForDeveloper(),
-    accessRecords: listWorkspaceAccessForDeveloper()
-  });
+  return sendJson(res, { ok: true, ...developerAdminPayload() });
 }
 
 async function router(req, res) {
@@ -3718,6 +3810,10 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/developer/companies/automation') {
       return handleDeveloperUpdateCompanyAutomation(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/developer/companies/provider-control') {
+      return handleDeveloperUpdateCompanyProviderControl(req, res);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/developer/users/workspace-limit') {

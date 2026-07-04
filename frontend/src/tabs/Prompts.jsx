@@ -157,12 +157,12 @@ function AiResponses({ data }) {
       <div className="page-title">
         <p className="eyebrow">AI Responses</p>
         <h1>Exact provider responses</h1>
-        <p>Hummingbird AI responses are stored now. ChatGPT, Claude, and Perplexity show NA until keys are connected.</p>
+        <p>Hummingbird AI responses are stored now. ChatGPT is Developer-controlled and appears when enabled for this workspace.</p>
       </div>
 
       <div className="metric-grid">
         <ProviderMetric title="Hummingbird AI" value={summary.gemini ?? 0} status="Connected" providerKey="gemini" active />
-        <ProviderMetric title="ChatGPT" value={summary.chatgpt ?? 0} status="NA · API key missing" />
+        <ProviderMetric title="ChatGPT" value={summary.chatgpt ?? 0} status={(summary.chatgpt ?? 0) > 0 ? 'Connected' : 'Developer controlled'} providerKey="chatgpt" active={(summary.chatgpt ?? 0) > 0} />
         <ProviderMetric title="Claude" value={summary.claude ?? 0} status="NA · API key missing" />
         <ProviderMetric title="Perplexity" value={summary.perplexity ?? 0} status="NA · API key missing" />
       </div>

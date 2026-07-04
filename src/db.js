@@ -270,6 +270,44 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_prompt_visibility_snapshots_prompt_id
       ON prompt_visibility_snapshots(prompt_id);
 
+    CREATE TABLE IF NOT EXISTS company_ai_provider_controls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'disabled',
+      daily_prompt_limit INTEGER NOT NULL DEFAULT 0,
+      monthly_prompt_limit INTEGER NOT NULL DEFAULT 0,
+      monthly_cost_limit_cents INTEGER NOT NULL DEFAULT 0,
+      auto_refresh_enabled INTEGER NOT NULL DEFAULT 0,
+      manual_refresh_enabled INTEGER NOT NULL DEFAULT 0,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(company_id, provider_name),
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_company_ai_provider_controls_company_id
+      ON company_ai_provider_controls(company_id);
+
+    CREATE TABLE IF NOT EXISTS ai_provider_usage_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider_name TEXT NOT NULL,
+      prompt_id INTEGER,
+      run_id INTEGER,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      estimated_cost_cents INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'completed',
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ai_provider_usage_company_provider
+      ON ai_provider_usage_logs(company_id, provider_name, created_at);
+
     CREATE TABLE IF NOT EXISTS aeo_recommendations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -488,6 +526,22 @@ function migrate() {
   ].forEach(([columnName, columnType]) => {
     if (!userColumns.includes(columnName)) {
       db.exec(`ALTER TABLE users ADD COLUMN ${columnName} ${columnType};`);
+    }
+  });
+
+  const providerControlColumns = db
+    .prepare('PRAGMA table_info(company_ai_provider_controls)')
+    .all()
+    .map((column) => column.name);
+
+  [
+    ['monthly_cost_limit_cents', 'INTEGER NOT NULL DEFAULT 0'],
+    ['auto_refresh_enabled', 'INTEGER NOT NULL DEFAULT 0'],
+    ['manual_refresh_enabled', 'INTEGER NOT NULL DEFAULT 0'],
+    ['last_used_at', 'TEXT']
+  ].forEach(([columnName, columnType]) => {
+    if (!providerControlColumns.includes(columnName)) {
+      db.exec(`ALTER TABLE company_ai_provider_controls ADD COLUMN ${columnName} ${columnType};`);
     }
   });
 }
@@ -1230,6 +1284,191 @@ function updateCompanyAutomationPolicy(companyId, policy) {
   );
 }
 
+const DEFAULT_AI_PROVIDER_CONTROLS = [
+  {
+    provider_name: 'gemini',
+    label: 'Hummingbird AI',
+    status: 'enabled',
+    daily_prompt_limit: 100,
+    monthly_prompt_limit: 3000,
+    monthly_cost_limit_cents: 0,
+    auto_refresh_enabled: 1,
+    manual_refresh_enabled: 1
+  },
+  {
+    provider_name: 'openai',
+    label: 'ChatGPT',
+    status: 'disabled',
+    daily_prompt_limit: 5,
+    monthly_prompt_limit: 100,
+    monthly_cost_limit_cents: 200,
+    auto_refresh_enabled: 0,
+    manual_refresh_enabled: 0
+  },
+  {
+    provider_name: 'claude',
+    label: 'Claude',
+    status: 'disabled',
+    daily_prompt_limit: 0,
+    monthly_prompt_limit: 0,
+    monthly_cost_limit_cents: 0,
+    auto_refresh_enabled: 0,
+    manual_refresh_enabled: 0
+  },
+  {
+    provider_name: 'perplexity',
+    label: 'Perplexity',
+    status: 'disabled',
+    daily_prompt_limit: 0,
+    monthly_prompt_limit: 0,
+    monthly_cost_limit_cents: 0,
+    auto_refresh_enabled: 0,
+    manual_refresh_enabled: 0
+  }
+];
+
+function periodStart(daysBack) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - daysBack);
+  date.setUTCHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+function aiProviderUsageForPeriod(companyId, providerName, sinceIso) {
+  return db.prepare(`
+    SELECT
+      COUNT(*) AS prompts_used,
+      COALESCE(SUM(estimated_cost_cents), 0) AS estimated_cost_cents
+    FROM ai_provider_usage_logs
+    WHERE company_id = ?
+      AND provider_name = ?
+      AND status = 'completed'
+      AND created_at >= ?
+  `).get(companyId, providerName, sinceIso);
+}
+
+function withAiProviderUsage(companyId, control) {
+  const daily = aiProviderUsageForPeriod(companyId, control.provider_name, periodStart(0));
+  const monthly = aiProviderUsageForPeriod(companyId, control.provider_name, periodStart(30));
+  const dailyLimit = Number(control.daily_prompt_limit || 0);
+  const monthlyLimit = Number(control.monthly_prompt_limit || 0);
+  const monthlyCostLimit = Number(control.monthly_cost_limit_cents || 0);
+
+  return {
+    ...control,
+    daily_prompts_used: Number(daily?.prompts_used || 0),
+    monthly_prompts_used: Number(monthly?.prompts_used || 0),
+    monthly_cost_used_cents: Number(monthly?.estimated_cost_cents || 0),
+    daily_remaining: dailyLimit > 0 ? Math.max(dailyLimit - Number(daily?.prompts_used || 0), 0) : 0,
+    monthly_remaining: monthlyLimit > 0 ? Math.max(monthlyLimit - Number(monthly?.prompts_used || 0), 0) : 0,
+    monthly_cost_remaining_cents: monthlyCostLimit > 0 ? Math.max(monthlyCostLimit - Number(monthly?.estimated_cost_cents || 0), 0) : 0
+  };
+}
+
+function getCompanyAiProviderControls(companyId) {
+  const rows = db.prepare(`
+    SELECT *
+    FROM company_ai_provider_controls
+    WHERE company_id = ?
+  `).all(companyId);
+  const rowByProvider = new Map(rows.map((row) => [row.provider_name, row]));
+
+  return DEFAULT_AI_PROVIDER_CONTROLS.map((defaultControl) => {
+    const row = rowByProvider.get(defaultControl.provider_name) || {};
+    return withAiProviderUsage(companyId, {
+      ...defaultControl,
+      ...row,
+      company_id: companyId,
+      label: defaultControl.label,
+      status: row.status || defaultControl.status,
+      daily_prompt_limit: Number(row.daily_prompt_limit ?? defaultControl.daily_prompt_limit),
+      monthly_prompt_limit: Number(row.monthly_prompt_limit ?? defaultControl.monthly_prompt_limit),
+      monthly_cost_limit_cents: Number(row.monthly_cost_limit_cents ?? defaultControl.monthly_cost_limit_cents),
+      auto_refresh_enabled: Number(row.auto_refresh_enabled ?? defaultControl.auto_refresh_enabled),
+      manual_refresh_enabled: Number(row.manual_refresh_enabled ?? defaultControl.manual_refresh_enabled)
+    });
+  });
+}
+
+function updateCompanyAiProviderControl(companyId, control) {
+  return db.prepare(`
+    INSERT INTO company_ai_provider_controls (
+      company_id,
+      provider_name,
+      status,
+      daily_prompt_limit,
+      monthly_prompt_limit,
+      monthly_cost_limit_cents,
+      auto_refresh_enabled,
+      manual_refresh_enabled,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(company_id, provider_name) DO UPDATE SET
+      status = excluded.status,
+      daily_prompt_limit = excluded.daily_prompt_limit,
+      monthly_prompt_limit = excluded.monthly_prompt_limit,
+      monthly_cost_limit_cents = excluded.monthly_cost_limit_cents,
+      auto_refresh_enabled = excluded.auto_refresh_enabled,
+      manual_refresh_enabled = excluded.manual_refresh_enabled,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(
+    companyId,
+    control.providerName,
+    control.status,
+    control.dailyPromptLimit,
+    control.monthlyPromptLimit,
+    control.monthlyCostLimitCents,
+    control.autoRefreshEnabled ? 1 : 0,
+    control.manualRefreshEnabled ? 1 : 0
+  );
+}
+
+function logAiProviderUsage({
+  companyId,
+  providerName,
+  promptId = null,
+  runId = null,
+  inputTokens = 0,
+  outputTokens = 0,
+  estimatedCostCents = 0,
+  status = 'completed',
+  errorMessage = ''
+}) {
+  db.prepare(`
+    INSERT INTO ai_provider_usage_logs (
+      company_id,
+      provider_name,
+      prompt_id,
+      run_id,
+      input_tokens,
+      output_tokens,
+      estimated_cost_cents,
+      status,
+      error_message
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    companyId,
+    providerName,
+    promptId || null,
+    runId || null,
+    Number(inputTokens || 0),
+    Number(outputTokens || 0),
+    Number(estimatedCostCents || 0),
+    status,
+    errorMessage || ''
+  );
+
+  db.prepare(`
+    UPDATE company_ai_provider_controls
+    SET last_used_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE company_id = ?
+      AND provider_name = ?
+  `).run(companyId, providerName);
+}
+
 function markCompanyAutoRefreshed(companyId) {
   return db.prepare(`
     UPDATE companies
@@ -1753,7 +1992,7 @@ function updatePromptVisibility(companyId, results, options = {}) {
       recommended_citations = ?,
       ai_response_summary = ?,
       gemini_response_summary = ?,
-      chatgpt_response_summary = COALESCE(NULLIF(chatgpt_response_summary, ''), 'NA'),
+      chatgpt_response_summary = COALESCE(NULLIF(?, ''), NULLIF(chatgpt_response_summary, ''), 'NA'),
       claude_response_summary = COALESCE(NULLIF(claude_response_summary, ''), 'NA'),
       perplexity_response_summary = COALESCE(NULLIF(perplexity_response_summary, ''), 'NA'),
       visibility_status = ?,
@@ -1774,7 +2013,8 @@ function updatePromptVisibility(companyId, results, options = {}) {
       const competitorMentionsJson = JSON.stringify(result.competitor_mentions || []);
       const recommendedCitationsJson = JSON.stringify(result.recommended_citations || []);
       const responseSummary = result.ai_response_summary || '';
-      const providerResponse = responseSummary || 'NA';
+      const providerResponse = result.gemini_response_summary || responseSummary || 'NA';
+      const chatgptResponse = result.chatgpt_response_summary || 'NA';
       const visibilityStatus = result.visibility_status || 'checked';
 
       if (runId) {
@@ -1788,7 +2028,7 @@ function updatePromptVisibility(companyId, results, options = {}) {
           recommendedCitationsJson,
           responseSummary,
           providerResponse,
-          result.chatgpt_response_summary || 'NA',
+          chatgptResponse,
           result.claude_response_summary || 'NA',
           result.perplexity_response_summary || 'NA',
           visibilityStatus
@@ -1802,6 +2042,7 @@ function updatePromptVisibility(companyId, results, options = {}) {
         recommendedCitationsJson,
         responseSummary,
         providerResponse,
+        chatgptResponse,
         visibilityStatus,
         companyId,
         promptId
@@ -2352,6 +2593,9 @@ module.exports = {
   updateCompanyLimits,
   updateCompanyAutomationPolicy,
   markCompanyAutoRefreshed,
+  getCompanyAiProviderControls,
+  updateCompanyAiProviderControl,
+  logAiProviderUsage,
   getDeveloperCompanyAccess,
   getRoleByName,
   listCompanyUsers,
