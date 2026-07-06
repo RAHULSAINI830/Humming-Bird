@@ -372,11 +372,75 @@ function aiErrorStatus(error) {
   if (providerStatus === 429 || code === 'AI_RATE_LIMITED') return 429;
   if (providerStatus >= 500 || code === 'AI_SERVER_ERROR') return 503;
   if (code === 'AI_MISSING_KEY') return 503;
-  if (code === 'AI_INVALID_JSON') return 502;
+  if (code === 'AI_INVALID_JSON') return 503;
   if (code === 'AI_NETWORK_ERROR') return 503;
   if (providerStatus >= 400) return 502;
 
   return 500;
+}
+
+function chunkArray(items, size) {
+  const safeSize = Math.max(1, Number(size) || 1);
+  const chunks = [];
+
+  for (let index = 0; index < items.length; index += safeSize) {
+    chunks.push(items.slice(index, index + safeSize));
+  }
+
+  return chunks;
+}
+
+function refreshVisibilityBatchSize() {
+  const configured = Number(process.env.VISIBILITY_REFRESH_BATCH_SIZE || 5);
+
+  if (!Number.isFinite(configured) || configured <= 0) return 5;
+
+  return Math.max(1, Math.min(10, Math.floor(configured)));
+}
+
+function mergeVisibilityResults(existing, next) {
+  const byPrompt = new Map();
+
+  [...(existing || []), ...(next || [])].forEach((result) => {
+    const promptId = Number(result?.prompt_id);
+
+    if (!promptId) return;
+
+    byPrompt.set(promptId, {
+      ...(byPrompt.get(promptId) || {}),
+      ...result,
+      prompt_id: promptId
+    });
+  });
+
+  return Array.from(byPrompt.values());
+}
+
+async function analyzePromptVisibilitySafely(context, prompts, competitors, analysis, options = {}) {
+  const promptBatches = chunkArray(prompts, refreshVisibilityBatchSize());
+  let visibilityResults = [];
+  const errors = [];
+
+  for (const batch of promptBatches) {
+    try {
+      const batchResults = await AIService.analyzePromptVisibility(context.access, batch, competitors, analysis, options);
+      visibilityResults = mergeVisibilityResults(visibilityResults, batchResults);
+    } catch (error) {
+      errors.push(error);
+      console.warn(
+        `Hummingbird AI visibility batch failed: company=${context.access.company_id}, prompts=${batch.length}, code=${error?.message || error?.code || 'unknown'}, providerStatus=${error?.providerStatus || ''}`
+      );
+    }
+  }
+
+  if (!visibilityResults.length && errors.length) {
+    throw errors[0];
+  }
+
+  return {
+    visibilityResults,
+    failedBatches: errors.length
+  };
 }
 
 function notFound(res) {
@@ -541,8 +605,8 @@ function createSessionForUser(res, user) {
   });
 }
 
-function sessionPayload(session) {
-  return {
+function sessionPayload(session, options = {}) {
+  const payload = {
     authenticated: true,
     isDeveloper: Boolean(session.isDeveloper),
     user: {
@@ -558,6 +622,12 @@ function sessionPayload(session) {
     selectedRoleName: session.selectedRoleName,
     workspaceCompanies: session.workspaceCompanies || []
   };
+
+  if (options.includeSetupStatus && !session.isDeveloper && session.selectedCompanyId) {
+    payload.setupStatus = setupPipelineStatus(session.selectedCompanyId);
+  }
+
+  return payload;
 }
 
 function requireSession(req, res) {
@@ -2206,7 +2276,7 @@ async function handleLogin(req, res) {
     return sendJson(res, { error: 'No active company access was found for this account.' }, 403);
   }
 
-  return sendJson(res, sessionPayload(session));
+  return sendJson(res, sessionPayload(session, { includeSetupStatus: true }));
 }
 
 async function handleSignup(req, res) {
@@ -2268,7 +2338,7 @@ async function handleSignup(req, res) {
     status: user.status
   });
 
-  return sendJson(res, sessionPayload(session), 201);
+  return sendJson(res, sessionPayload(session, { includeSetupStatus: true }), 201);
 }
 
 async function handleSelectCompany(req, res) {
@@ -2297,7 +2367,7 @@ async function handleSelectCompany(req, res) {
   updateSession(req, res, payload);
   const updatedSession = { ...session, ...payload };
 
-  return sendJson(res, sessionPayload(updatedSession));
+  return sendJson(res, sessionPayload(updatedSession, { includeSetupStatus: true }));
 }
 
 async function handleCreateWorkspace(req, res) {
@@ -2352,7 +2422,7 @@ async function handleCreateWorkspace(req, res) {
     ...snapshotAccess(access)
   });
 
-  return sendJson(res, sessionPayload(nextSession), 201);
+  return sendJson(res, sessionPayload(nextSession, { includeSetupStatus: true }), 201);
 }
 
 function handleDashboard(req, res) {
@@ -3174,19 +3244,32 @@ async function handleSettingsRefreshVisibility(req, res) {
 
   try {
     const providerControls = getCompanyAiProviderControls(companyId);
-    const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
+    const { visibilityResults, failedBatches } = await analyzePromptVisibilitySafely(context, prompts, competitors, analysis, {
       providerControls,
       refreshType: 'manual'
     });
+
+    if (!visibilityResults.length) {
+      return sendJson(res, {
+        error: 'No AI responses were generated. Check provider controls and API keys in Developer Admin.'
+      }, 409);
+    }
+
     const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'manual-refresh',
       sourceType: 'hummingbird-ai'
     });
     logProviderUsageFromResults(companyId, run.runId, visibilityResults);
 
+    const message = failedBatches
+      ? `Regenerated ${run.promptsChecked || visibilityResults.length} AI responses. ${failedBatches} batch${failedBatches === 1 ? '' : 'es'} could not be refreshed.`
+      : `Regenerated ${run.promptsChecked || visibilityResults.length} AI responses.`;
+
     return sendJson(res, {
       ok: true,
-      message: `Regenerated ${run.promptsChecked || visibilityResults.length} AI responses.`,
+      partial: Boolean(failedBatches),
+      failedBatches,
+      message,
       refreshRun: run,
       settings: settingsPayload(context)
     });
@@ -3636,7 +3719,7 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/session') {
       const session = getSession(req);
-      return sendJson(res, session ? sessionPayload(session) : { authenticated: false }, session ? 200 : 401);
+      return sendJson(res, session ? sessionPayload(session, { includeSetupStatus: true }) : { authenticated: false }, session ? 200 : 401);
     }
 
     if (req.method === 'POST' && url.pathname === '/api/auth/login') {

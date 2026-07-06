@@ -1,16 +1,7 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { api } from './lib/api';
 import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, geoSubTabs, navItems, readInitialActiveView } from './lib/constants';
 import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, TabLoading, WorkspaceCard, labelForView } from './components/common';
-import Dashboard from './tabs/Dashboard';
-import BusinessAnalysis from './tabs/BusinessAnalysis';
-import AeoRecommendations from './tabs/AeoRecommendations';
-import Competitors from './tabs/Competitors';
-import Prompts from './tabs/Prompts';
-import Citations from './tabs/Citations';
-import GeoVisibility from './tabs/GeoVisibility';
-import Settings from './tabs/Settings';
-import DeveloperAdmin from './tabs/DeveloperAdmin';
 import businessAnalysisIcon from './assets/nav/business-analysis.svg';
 import citationsIcon from './assets/nav/citations.svg';
 import competitorsIcon from './assets/nav/competitors.svg';
@@ -19,6 +10,16 @@ import geoIcon from './assets/nav/geo.svg';
 import promptsIcon from './assets/nav/prompts.svg';
 import settingsIcon from './assets/nav/settings.svg';
 import whatsNextIcon from './assets/nav/whats-next.svg';
+
+const Dashboard = lazy(() => import('./tabs/Dashboard'));
+const BusinessAnalysis = lazy(() => import('./tabs/BusinessAnalysis'));
+const AeoRecommendations = lazy(() => import('./tabs/AeoRecommendations'));
+const Competitors = lazy(() => import('./tabs/Competitors'));
+const Prompts = lazy(() => import('./tabs/Prompts'));
+const Citations = lazy(() => import('./tabs/Citations'));
+const GeoVisibility = lazy(() => import('./tabs/GeoVisibility'));
+const Settings = lazy(() => import('./tabs/Settings'));
+const DeveloperAdmin = lazy(() => import('./tabs/DeveloperAdmin'));
 
 const navIconMap = {
   dashboard: dashboardIcon,
@@ -68,6 +69,9 @@ function App() {
     api('/api/session')
       .then((data) => {
         setSession(data);
+        if (data.setupStatus) {
+          setSetupStatus(data.setupStatus);
+        }
         setStatus('ready');
       })
       .catch(() => setStatus('guest'));
@@ -224,7 +228,7 @@ function App() {
   }, [activeView, status, session?.selectedCompanyId, loadedViews, loadingViews]);
 
   useEffect(() => {
-    if (status !== 'ready' || !session?.selectedCompanyId || session.isDeveloper) {
+    if (status !== 'ready' || !session?.selectedCompanyId || session.isDeveloper || setupStatus) {
       return;
     }
 
@@ -234,7 +238,7 @@ function App() {
       .then(setSetupStatus)
       .catch((error) => setSetupError(error.message))
       .finally(() => setSetupStatusLoading(false));
-  }, [status, session?.selectedCompanyId, session?.isDeveloper]);
+  }, [status, session?.selectedCompanyId, session?.isDeveloper, setupStatus]);
 
   async function handleLogout() {
     await api('/api/auth/logout', { method: 'POST', body: '{}' });
@@ -251,7 +255,7 @@ function App() {
       body: JSON.stringify({ companyId: Number(event.target.value) })
     });
     setSession(data);
-    setSetupStatus(null);
+    setSetupStatus(data.setupStatus || null);
     setSetupStatusLoading(false);
     setDashboard(null);
     setBusinessAnalysis(null);
@@ -323,7 +327,7 @@ function App() {
     });
 
     setSession(data);
-    setSetupStatus(null);
+    setSetupStatus(data.setupStatus || null);
     setSetupStatusLoading(false);
     setDashboard(null);
     setBusinessAnalysis(null);
@@ -352,6 +356,7 @@ function App() {
         onAuthenticated={(data) => {
           setNotice('');
           setSession(data);
+          setSetupStatus(data.setupStatus || null);
           setStatus('ready');
           setActiveView(DEFAULT_ACTIVE_VIEW);
         }}
@@ -468,15 +473,17 @@ function App() {
 
         {!(loadingViews[activeView] && !loadedViews[activeView]) ? (
           <div className={`tab-content-wrapper ${loadingViews[activeView] ? 'tab-refreshing' : ''}`}>
-            {activeView === 'dashboard' ? <Dashboard data={dashboard} session={session} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
-            {activeView === 'business-analysis' ? <BusinessAnalysis data={businessAnalysis} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-            {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
-            {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-            {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-            {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-            {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
-            {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} onRefreshVisibility={handleRefreshVisibilityResponses} onCreateWorkspace={handleCreateWorkspace} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
-            {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            <Suspense fallback={<TabLoading title={`Opening ${labelForView(activeView)}`} />}>
+              {activeView === 'dashboard' ? <Dashboard data={dashboard} session={session} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
+              {activeView === 'business-analysis' ? <BusinessAnalysis data={businessAnalysis} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+              {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
+              {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+              {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+              {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+              {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
+              {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} onRefreshVisibility={handleRefreshVisibilityResponses} onCreateWorkspace={handleCreateWorkspace} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+              {activeView === 'developer' ? <DeveloperAdmin data={developerData} onChange={setDeveloperData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+            </Suspense>
           </div>
         ) : null}
       </section>
