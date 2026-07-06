@@ -570,7 +570,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
             <LogoChip name={providerCompany?.company_name || 'Company'} url={providerCompany?.logo_url || providerCompany?.website_url} />
             <div>
               <strong>{providerCompany?.company_name}</strong>
-              <small>Enable ChatGPT only for approved companies and cap daily prompts, monthly prompts, and estimated spend.</small>
+              <small>Enable paid providers only for approved companies and cap daily prompts, monthly prompts, and estimated spend.</small>
             </div>
           </div>
 
@@ -654,6 +654,18 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
                 {control.provider_name === 'openai' ? (
                   <p className="provider-control-note">
                     ChatGPT uses the platform OPENAI_API_KEY. Keep auto refresh off until you are comfortable with spend.
+                  </p>
+                ) : null}
+
+                {control.provider_name === 'perplexity' ? (
+                  <p className="provider-control-note">
+                    Perplexity uses the platform PERPLEXITY_API_KEY. It can return grounded answers and citations, so keep limits tight while testing.
+                  </p>
+                ) : null}
+
+                {control.provider_name === 'claude' ? (
+                  <p className="provider-control-note">
+                    Claude uses the platform CLAUDE_API_KEY or ANTHROPIC_API_KEY. Keep manual testing limits low before enabling daily refresh.
                   </p>
                 ) : null}
 

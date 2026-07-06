@@ -380,7 +380,7 @@ function validateBusinessAnalysisPayload(payload) {
   return analysis;
 }
 
-function buildPromptGenerationPrompt(company, analysis) {
+function buildPromptGenerationPrompt(company, analysis, websiteSnapshot) {
   const context = {
     company: {
       company_name: company.company_name || '',
@@ -400,17 +400,38 @@ function buildPromptGenerationPrompt(company, analysis) {
       target_audience_summary: analysis?.target_audience_summary || '',
       service_area_summary: analysis?.service_area_summary || '',
       positioning_summary: analysis?.positioning_summary || ''
+    },
+    website_snapshot: {
+      fetched: Boolean(websiteSnapshot?.fetched),
+      url: websiteSnapshot?.url || company.website_url || '',
+      title: websiteSnapshot?.title || '',
+      description: websiteSnapshot?.description || '',
+      readable_text: websiteSnapshot?.text || '',
+      fetch_error: websiteSnapshot?.error || ''
     }
   };
 
   return `You are Hummingbird, an AI visibility and GEO/AEO strategist.
 
-Create the top 15 realistic AI search prompts that potential buyers would ask ChatGPT, Gemini, Claude, Perplexity, or another answer engine when looking for a company like this.
+Create the top 15 realistic AI search prompts that potential buyers would ask ChatGPT, Gemini, Claude, Perplexity, or another answer engine when looking for solutions related to this company's actual business.
 
-Use only the provided company and business analysis context.
+Use only the provided company, saved business analysis, and extracted website content.
+
+Source priority:
+1. Extracted website readable_text, title, and description.
+2. Saved business analysis generated from the website.
+3. Company profile fields.
+
+Critical rules:
+- Prompts must be related to the business category, services, audience, buyer pain points, and buying journey of this specific company.
+- Do not generate prompts that merely ask "what is [company]" or "tell me about [company]" unless that is clearly a buyer-intent query.
+- Do not generate prompts about Hummingbird, SEO software, AI visibility tracking, or this platform unless the company itself sells that.
+- Each prompt must include a specific service, problem, use case, audience, industry, location, or comparison angle from the provided context.
+- If website content is available, prefer service language found on the website.
+- If website content is missing, be conservative and use only the saved analysis fields.
 
 Prompt goals:
-- Prompts should be related to the company's actual services, audience, industry, and buying journey.
+- Prompts should model what real buyers would ask before buying from or comparing vendors like this company.
 - Include discovery, comparison, problem-aware, solution-aware, local/service-area, pricing/value, and competitor-alternative style prompts where relevant.
 - Prompts must sound like real buyer questions.
 - Do not mention Hummingbird.
@@ -969,6 +990,7 @@ async function generateCompanyPrompts(company, analysis) {
     throw new Error('AI_MISSING_KEY');
   }
 
+  const websiteSnapshot = await extractWebsiteSnapshot(company.website_url);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
@@ -977,7 +999,7 @@ async function generateCompanyPrompts(company, analysis) {
       contents: [
         {
           role: 'user',
-          parts: [{ text: buildPromptGenerationPrompt(company, analysis) }]
+          parts: [{ text: buildPromptGenerationPrompt(company, analysis, websiteSnapshot) }]
         }
       ],
       generationConfig: {

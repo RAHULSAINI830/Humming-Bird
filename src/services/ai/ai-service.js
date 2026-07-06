@@ -1,5 +1,7 @@
 const GeminiProvider = require('./gemini');
 const OpenAIProvider = require('./openai');
+const PerplexityProvider = require('./perplexity');
+const ClaudeProvider = require('./claude');
 
 async function generateBusinessAnalysis(company) {
   return GeminiProvider.generateBusinessAnalysis(company);
@@ -78,7 +80,17 @@ function mergeProviderResults(baseResults, providerResults, providerName) {
 
     if (providerName === 'openai') {
       current.chatgpt_response_summary = providerResult.chatgpt_response_summary || providerResult.ai_response_summary || 'NA';
+    }
 
+    if (providerName === 'perplexity') {
+      current.perplexity_response_summary = providerResult.perplexity_response_summary || providerResult.ai_response_summary || 'NA';
+    }
+
+    if (providerName === 'claude') {
+      current.claude_response_summary = providerResult.claude_response_summary || providerResult.ai_response_summary || 'NA';
+    }
+
+    if (providerName === 'openai' || providerName === 'perplexity' || providerName === 'claude') {
       if (!current.ai_response_summary) {
         current.ai_response_summary = providerResult.ai_response_summary || '';
       }
@@ -112,12 +124,15 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
 
   if (providerEnabled(providerControls, 'gemini', refreshType)) {
     try {
-      results = await GeminiProvider.analyzePromptVisibility(
+      results = (await GeminiProvider.analyzePromptVisibility(
         company,
         promptSliceForProvider(prompts, providerControls, 'gemini'),
         competitors,
         analysis
-      );
+      )).map((result) => ({
+        ...result,
+        gemini_response_summary: result.gemini_response_summary || result.ai_response_summary || 'NA'
+      }));
     } catch (error) {
       errors.push(error);
     }
@@ -130,6 +145,32 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
       try {
         const openAiResults = await OpenAIProvider.analyzePromptVisibility(company, openAiPrompts, competitors, analysis);
         results = mergeProviderResults(results, openAiResults, 'openai');
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  }
+
+  if (providerEnabled(providerControls, 'perplexity', refreshType)) {
+    const perplexityPrompts = promptSliceForProvider(prompts, providerControls, 'perplexity');
+
+    if (perplexityPrompts.length && process.env.PERPLEXITY_API_KEY) {
+      try {
+        const perplexityResults = await PerplexityProvider.analyzePromptVisibility(company, perplexityPrompts, competitors, analysis);
+        results = mergeProviderResults(results, perplexityResults, 'perplexity');
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  }
+
+  if (providerEnabled(providerControls, 'claude', refreshType)) {
+    const claudePrompts = promptSliceForProvider(prompts, providerControls, 'claude');
+
+    if (claudePrompts.length && (process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY)) {
+      try {
+        const claudeResults = await ClaudeProvider.analyzePromptVisibility(company, claudePrompts, competitors, analysis);
+        results = mergeProviderResults(results, claudeResults, 'claude');
       } catch (error) {
         errors.push(error);
       }
@@ -153,7 +194,9 @@ function getProviderDiagnostics() {
   return {
     ...hummingbird,
     hummingbird,
-    openai: OpenAIProvider.getProviderDiagnostics()
+    openai: OpenAIProvider.getProviderDiagnostics(),
+    perplexity: PerplexityProvider.getProviderDiagnostics(),
+    claude: ClaudeProvider.getProviderDiagnostics()
   };
 }
 

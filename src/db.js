@@ -1309,9 +1309,9 @@ const DEFAULT_AI_PROVIDER_CONTROLS = [
     provider_name: 'claude',
     label: 'Claude',
     status: 'disabled',
-    daily_prompt_limit: 0,
-    monthly_prompt_limit: 0,
-    monthly_cost_limit_cents: 0,
+    daily_prompt_limit: 5,
+    monthly_prompt_limit: 100,
+    monthly_cost_limit_cents: 500,
     auto_refresh_enabled: 0,
     manual_refresh_enabled: 0
   },
@@ -1319,9 +1319,9 @@ const DEFAULT_AI_PROVIDER_CONTROLS = [
     provider_name: 'perplexity',
     label: 'Perplexity',
     status: 'disabled',
-    daily_prompt_limit: 0,
-    monthly_prompt_limit: 0,
-    monthly_cost_limit_cents: 0,
+    daily_prompt_limit: 5,
+    monthly_prompt_limit: 100,
+    monthly_cost_limit_cents: 500,
     auto_refresh_enabled: 0,
     manual_refresh_enabled: 0
   }
@@ -1993,8 +1993,8 @@ function updatePromptVisibility(companyId, results, options = {}) {
       ai_response_summary = ?,
       gemini_response_summary = ?,
       chatgpt_response_summary = COALESCE(NULLIF(?, ''), NULLIF(chatgpt_response_summary, ''), 'NA'),
-      claude_response_summary = COALESCE(NULLIF(claude_response_summary, ''), 'NA'),
-      perplexity_response_summary = COALESCE(NULLIF(perplexity_response_summary, ''), 'NA'),
+      claude_response_summary = COALESCE(NULLIF(?, ''), NULLIF(claude_response_summary, ''), 'NA'),
+      perplexity_response_summary = COALESCE(NULLIF(?, ''), NULLIF(perplexity_response_summary, ''), 'NA'),
       visibility_status = ?,
       last_checked_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
@@ -2013,8 +2013,10 @@ function updatePromptVisibility(companyId, results, options = {}) {
       const competitorMentionsJson = JSON.stringify(result.competitor_mentions || []);
       const recommendedCitationsJson = JSON.stringify(result.recommended_citations || []);
       const responseSummary = result.ai_response_summary || '';
-      const providerResponse = result.gemini_response_summary || responseSummary || 'NA';
+      const providerResponse = result.gemini_response_summary || 'NA';
       const chatgptResponse = result.chatgpt_response_summary || 'NA';
+      const claudeResponse = result.claude_response_summary || 'NA';
+      const perplexityResponse = result.perplexity_response_summary || 'NA';
       const visibilityStatus = result.visibility_status || 'checked';
 
       if (runId) {
@@ -2029,8 +2031,8 @@ function updatePromptVisibility(companyId, results, options = {}) {
           responseSummary,
           providerResponse,
           chatgptResponse,
-          result.claude_response_summary || 'NA',
-          result.perplexity_response_summary || 'NA',
+          claudeResponse,
+          perplexityResponse,
           visibilityStatus
         );
       }
@@ -2043,6 +2045,8 @@ function updatePromptVisibility(companyId, results, options = {}) {
         responseSummary,
         providerResponse,
         chatgptResponse,
+        claudeResponse,
+        perplexityResponse,
         visibilityStatus,
         companyId,
         promptId
