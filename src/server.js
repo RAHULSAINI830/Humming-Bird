@@ -351,7 +351,14 @@ function aiErrorResponse(error, fallbackMessage) {
     AI_INVALID_JSON: 'Hummingbird AI returned an unreadable response. Please retry.',
     AI_NETWORK_ERROR: 'Hummingbird AI could not be reached. Please retry.',
     AI_SERVER_ERROR: 'Hummingbird AI service is temporarily unavailable. Please retry.',
-    AI_REQUEST_FAILED: 'Hummingbird AI request failed. Please check the AI key, model, and provider quota.'
+    AI_REQUEST_FAILED: 'Hummingbird AI request failed. Please check the AI key, model, and provider quota.',
+    CLAUDE_MISSING_KEY: 'Claude is not configured yet. Please add CLAUDE_API_KEY or ANTHROPIC_API_KEY in production environment variables and redeploy.',
+    CLAUDE_AUTH_FAILED: 'Claude authentication failed. Please check the Claude API key in production environment variables and redeploy.',
+    CLAUDE_RATE_LIMITED: 'Claude is temporarily rate-limited or out of credits. Please wait and retry, or check Anthropic billing/quota.',
+    CLAUDE_TIMEOUT: 'Claude took too long to respond. Please retry.',
+    CLAUDE_EMPTY_RESPONSE: 'Claude returned an empty response. Please retry.',
+    CLAUDE_MODEL_UNAVAILABLE: 'The configured Claude model is not available. Use CLAUDE_MODEL=claude-haiku-4-5 and redeploy.',
+    CLAUDE_REQUEST_FAILED: 'Claude request failed. Please check the Claude API key, model, and provider quota.'
   };
 
   return {
@@ -374,6 +381,13 @@ function aiErrorStatus(error) {
   if (code === 'AI_MISSING_KEY') return 503;
   if (code === 'AI_INVALID_JSON') return 503;
   if (code === 'AI_NETWORK_ERROR') return 503;
+  if (code === 'CLAUDE_MISSING_KEY') return 503;
+  if (code === 'CLAUDE_AUTH_FAILED') return 401;
+  if (code === 'CLAUDE_RATE_LIMITED') return 429;
+  if (code === 'CLAUDE_TIMEOUT') return 504;
+  if (code === 'CLAUDE_MODEL_UNAVAILABLE') return 422;
+  if (code === 'CLAUDE_EMPTY_RESPONSE') return 503;
+  if (code === 'CLAUDE_REQUEST_FAILED') return providerStatus >= 400 ? providerStatus : 502;
   if (providerStatus >= 400) return 502;
 
   return 500;

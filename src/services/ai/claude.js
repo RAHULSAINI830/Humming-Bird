@@ -1,5 +1,13 @@
 function claudeModel() {
-  return process.env.CLAUDE_MODEL || 'claude-3-5-haiku-latest';
+  const rawModel = String(process.env.CLAUDE_MODEL || 'claude-haiku-4-5').trim();
+  const model = rawModel.replace(/^CLAUDE_MODEL=/i, '').trim();
+  const aliases = {
+    'claude-3-5-haiku-latest': 'claude-haiku-4-5',
+    'claude-3.5-haiku-latest': 'claude-haiku-4-5',
+    'claude-3-haiku-latest': 'claude-haiku-4-5'
+  };
+
+  return aliases[model] || model || 'claude-haiku-4-5';
 }
 
 function claudeTimeout() {
@@ -185,6 +193,10 @@ async function callClaude(prompt, signal) {
 
     if (response.status === 429) {
       throw createClaudeError('CLAUDE_RATE_LIMITED', message, response.status);
+    }
+
+    if (response.status === 400 && /model/i.test(message)) {
+      throw createClaudeError('CLAUDE_MODEL_UNAVAILABLE', message, response.status);
     }
 
     throw createClaudeError('CLAUDE_REQUEST_FAILED', message, response.status);
