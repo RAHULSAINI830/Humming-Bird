@@ -2141,6 +2141,8 @@ button {
 
 .brand-coverage-chart {
   position: relative;
+  display: grid;
+  grid-template-rows: auto auto;
   padding: 0;
 }
 
@@ -2150,8 +2152,9 @@ button {
   grid-template-columns: repeat(7, minmax(62px, 1fr));
   gap: 12px;
   align-items: end;
-  min-height: 250px;
-  padding: 22px 44px 34px;
+  height: 310px;
+  min-height: 310px;
+  padding: 20px 42px 0;
   border: 0;
   border-radius: 0;
   background:
@@ -2211,7 +2214,7 @@ button {
   content: "";
   position: absolute;
   right: 0;
-  bottom: 34px;
+  bottom: 48px;
   left: 44px;
   height: 1px;
   background: #d8dee8;
@@ -2221,7 +2224,7 @@ button {
 .brand-chart-y-axis {
   position: absolute;
   top: 22px;
-  bottom: 34px;
+  bottom: 48px;
   left: 25px;
   z-index: 2;
   display: flex;
@@ -2247,12 +2250,14 @@ button {
 .brand-chart-column {
   position: relative;
   display: grid;
-  height: 194px;
-  align-items: end;
+  grid-template-rows: minmax(0, 1fr) 48px;
+  height: 100%;
+  align-items: stretch;
   justify-items: center;
 }
 
 .brand-chart-stack {
+  align-self: end;
   display: flex;
   width: min(38px, 68%);
   min-height: 0;
@@ -2289,13 +2294,14 @@ button {
 }
 
 .brand-chart-column small {
-  position: absolute;
-  bottom: -24px;
-  left: 50%;
+  position: relative;
+  z-index: 2;
+  align-self: start;
+  justify-self: center;
+  padding-top: 12px;
   color: var(--primary);
   font-size: 10px;
   font-weight: 300;
-  transform: translateX(-50%);
   white-space: nowrap;
 }
 
@@ -2304,7 +2310,9 @@ button {
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px 14px;
-  padding: 6px 34px 8px;
+  min-height: 38px;
+  padding: 7px 34px 8px;
+  border-top: 1px solid #edf0f5;
 }
 
 .brand-chart-legend span {

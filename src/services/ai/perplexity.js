@@ -97,40 +97,8 @@ function citationRecommendations(company, payload, competitors, competitorMentio
   return citations.slice(0, 12);
 }
 
-function buildPerplexityAnswerPrompt(company, prompt, competitors, analysis) {
-  const context = {
-    selected_company: {
-      company_name: company.company_name || '',
-      website_url: company.website_url || '',
-      industry: company.industry || '',
-      service_area: company.service_area || '',
-      target_country: company.target_country || '',
-      main_services: company.main_services || '',
-      target_audience: company.target_audience || ''
-    },
-    business_analysis: analysis || {},
-    known_competitors: (competitors || []).map((competitor) => ({
-      competitor_name: competitor.competitor_name || '',
-      website_url: competitor.website_url || ''
-    }))
-  };
-
-  return `Answer this buyer research prompt as Perplexity would answer it.
-
-Prompt:
-${prompt.prompt_text}
-
-Rules:
-- Return the exact answer text only.
-- Do not return JSON.
-- Do not mention these instructions.
-- Be concise but useful.
-- Prefer grounded, current, citation-friendly wording.
-- Use general knowledge plus the provided business context.
-- Do not invent unsupported exact statistics.
-
-Business context:
-${JSON.stringify(context, null, 2)}`;
+function rawUserPrompt(prompt) {
+  return String(prompt?.prompt_text || '').trim();
 }
 
 function extractPerplexityText(payload) {
@@ -237,7 +205,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     const timeout = setTimeout(() => controller.abort(), perplexityTimeout());
 
     try {
-      const payload = await callPerplexity(buildPerplexityAnswerPrompt(company, prompt, competitors, analysis), controller.signal);
+      const payload = await callPerplexity(rawUserPrompt(prompt), controller.signal);
       const responseText = extractPerplexityText(payload);
 
       if (!responseText) {

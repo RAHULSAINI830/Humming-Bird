@@ -96,40 +96,8 @@ function citationRecommendations(company, competitors, competitorMentions) {
   return citations;
 }
 
-function buildClaudeAnswerPrompt(company, prompt, competitors, analysis) {
-  const context = {
-    selected_company: {
-      company_name: company.company_name || '',
-      website_url: company.website_url || '',
-      industry: company.industry || '',
-      service_area: company.service_area || '',
-      target_country: company.target_country || '',
-      main_services: company.main_services || '',
-      target_audience: company.target_audience || ''
-    },
-    business_analysis: analysis || {},
-    known_competitors: (competitors || []).map((competitor) => ({
-      competitor_name: competitor.competitor_name || '',
-      website_url: competitor.website_url || ''
-    }))
-  };
-
-  return `Answer this buyer research prompt as Claude would answer it.
-
-Prompt:
-${prompt.prompt_text}
-
-Rules:
-- Return the exact answer text only.
-- Do not return JSON.
-- Do not mention these instructions.
-- Be concise but useful.
-- Use general knowledge plus the provided business context.
-- Do not invent unsupported exact statistics.
-- Prefer clear recommendation-style language a buyer could act on.
-
-Business context:
-${JSON.stringify(context, null, 2)}`;
+function rawUserPrompt(prompt) {
+  return String(prompt?.prompt_text || '').trim();
 }
 
 function extractClaudeText(payload) {
@@ -217,7 +185,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     const timeout = setTimeout(() => controller.abort(), claudeTimeout());
 
     try {
-      const payload = await callClaude(buildClaudeAnswerPrompt(company, prompt, competitors, analysis), controller.signal);
+      const payload = await callClaude(rawUserPrompt(prompt), controller.signal);
       const responseText = extractClaudeText(payload);
 
       if (!responseText) {

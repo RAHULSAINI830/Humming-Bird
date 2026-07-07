@@ -721,6 +721,69 @@ function exactResponseMentionsBrand(responseText, company) {
   return brandAliasesFor(company).some((alias) => normalizedResponse.includes(alias.toLowerCase()));
 }
 
+function competitorMentionsFor(responseText, competitors) {
+  const normalizedResponse = String(responseText || '').toLowerCase();
+
+  return (competitors || [])
+    .map((competitor) => {
+      const name = String(competitor.competitor_name || competitor.name || '').trim();
+      const websiteUrl = String(competitor.website_url || '').trim();
+
+      if (!name || !normalizedResponse.includes(name.toLowerCase())) return null;
+
+      return {
+        competitor_name: name,
+        website_url: websiteUrl,
+        mention_context: 'Mentioned in Hummingbird AI response.'
+      };
+    })
+    .filter(Boolean);
+}
+
+function citationRecommendations(company, competitors, competitorMentions) {
+  const citations = [];
+
+  if (company?.website_url) {
+    citations.push({
+      page_title: `${company.company_name || 'Company'} website`,
+      url: company.website_url,
+      source_owner: company.company_name || 'Selected company',
+      why_recommended: 'Primary brand website to support answer-engine visibility.'
+    });
+  }
+
+  competitorMentions.slice(0, 5).forEach((competitor) => {
+    if (!competitor.website_url) return;
+
+    citations.push({
+      page_title: `${competitor.competitor_name} website`,
+      url: competitor.website_url,
+      source_owner: competitor.competitor_name,
+      why_recommended: 'Competitor source referenced for comparison visibility.'
+    });
+  });
+
+  return citations;
+}
+
+function rawUserPrompt(prompt) {
+  return String(prompt?.prompt_text || '').trim();
+}
+
+function geminiTokenUsage(payload) {
+  return {
+    inputTokens: Number(payload?.usageMetadata?.promptTokenCount || 0),
+    outputTokens: Number(payload?.usageMetadata?.candidatesTokenCount || 0)
+  };
+}
+
+function estimateGeminiCostCents(inputTokens, outputTokens) {
+  const inputDollarsPerMillion = Number(process.env.GEMINI_INPUT_DOLLARS_PER_MILLION || 0);
+  const outputDollarsPerMillion = Number(process.env.GEMINI_OUTPUT_DOLLARS_PER_MILLION || 0);
+  const dollars = (inputTokens / 1_000_000) * inputDollarsPerMillion + (outputTokens / 1_000_000) * outputDollarsPerMillion;
+  return Math.ceil(dollars * 100);
+}
+
 function validatePromptVisibilityPayload(payload, prompts, company) {
   const promptIds = new Set(prompts.map((prompt) => String(prompt.id)));
   const results = Array.isArray(payload?.prompt_results) ? payload.prompt_results : [];
@@ -1082,40 +1145,66 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     throw new Error('AI_MISSING_KEY');
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
+  const results = [];
 
-  try {
-    const response = await callGemini({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: buildPromptVisibilityPrompt(company, prompts, competitors, analysis) }]
+  for (const prompt of prompts) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), geminiTimeout());
+
+    try {
+      const response = await callGemini({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: rawUserPrompt(prompt) }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2
         }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json',
-        responseSchema: promptVisibilityJsonSchema()
+      }, controller.signal);
+
+      const payload = await response.json();
+      const responseText = String(extractGeminiText(payload) || '').trim();
+
+      if (!responseText) {
+        throw new Error('AI_INVALID_JSON');
       }
-    }, controller.signal);
 
-    const payload = await response.json();
-    const text = normalizeGeminiJsonText(extractGeminiText(payload));
+      const brandMentioned = exactResponseMentionsBrand(responseText, company);
+      const competitorMentions = competitorMentionsFor(responseText, competitors);
+      const usage = geminiTokenUsage(payload);
 
-    if (!text) {
-      throw new Error('AI_INVALID_JSON');
+      results.push({
+        prompt_id: String(prompt.id),
+        brand_mentioned: brandMentioned,
+        brand_mention_context: brandMentioned
+          ? 'Mentioned in Hummingbird AI response.'
+          : 'Not mentioned in Hummingbird AI response.',
+        competitor_mentions: competitorMentions,
+        recommended_citations: citationRecommendations(company, competitors, competitorMentions),
+        ai_response_summary: responseText,
+        gemini_response_summary: responseText,
+        visibility_status: 'checked',
+        provider_usage: {
+          provider_name: 'gemini',
+          prompt_id: Number(prompt.id),
+          input_tokens: usage.inputTokens,
+          output_tokens: usage.outputTokens,
+          estimated_cost_cents: estimateGeminiCostCents(usage.inputTokens, usage.outputTokens)
+        }
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      if (error instanceof TypeError) throw new Error('AI_NETWORK_ERROR');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return validatePromptVisibilityPayload(JSON.parse(text), prompts, company);
-  } catch (error) {
-    if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
-    if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
-    if (error instanceof TypeError) throw new Error('AI_NETWORK_ERROR');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  return results;
 }
 
 async function generateAeoRecommendations(context) {
