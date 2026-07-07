@@ -207,9 +207,23 @@ function BrandCoverageChart({ rows, trend }) {
   const colorForBrand = (name) => colors[Math.max(0, visibleBrandNames.indexOf(name)) % colors.length];
   const hasCoverageData = chartPoints.some((point) => (point.brands || []).length || Number(point.value || 0) > 0);
   const columnCount = Math.max(1, chartPoints.length);
+  const chartMax = 40;
+  const formatCreatedAt = (value) => {
+    if (!value) return '';
+    const date = new Date(String(value).replace(' ', 'T'));
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(date);
+  };
   const formatPointLabel = (point, index) => {
+    const createdAtLabel = formatCreatedAt(point?.created_at);
+    if (createdAtLabel) return createdAtLabel;
     if (!point?.date) return `Run ${index + 1}`;
-    if (point.date === 'Latest' && chartPoints.length > 1) return `Run ${index + 1}`;
     return point.date;
   };
 
@@ -228,9 +242,10 @@ function BrandCoverageChart({ rows, trend }) {
             value: Math.max(0, Number(item.value ?? item.coverage ?? item.share ?? item.mentions ?? 0))
           }));
           const total = segments.reduce((sum, item) => sum + item.value, 0);
+          const stackHeight = total > 0 ? Math.max(5, Math.min(100, (total / chartMax) * 100)) : 0;
           return (
             <div className="brand-chart-column" key={`${point.runId || point.date || index}`}>
-              <div className="brand-chart-stack" style={{ height: `${Math.max(4, Math.min(92, total * 2.1))}%` }}>
+              <div className="brand-chart-stack" style={{ height: `${stackHeight}%` }}>
                 {segments.map((item) => {
                   const segmentHeight = total ? Math.max(4, (item.value / total) * 100) : 0;
                   return (
