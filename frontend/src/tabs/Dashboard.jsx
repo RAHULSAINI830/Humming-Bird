@@ -206,6 +206,12 @@ function BrandCoverageChart({ rows, trend }) {
   });
   const colorForBrand = (name) => colors[Math.max(0, visibleBrandNames.indexOf(name)) % colors.length];
   const hasCoverageData = chartPoints.some((point) => (point.brands || []).length || Number(point.value || 0) > 0);
+  const columnCount = Math.max(1, chartPoints.length);
+  const formatPointLabel = (point, index) => {
+    if (!point?.date) return `Run ${index + 1}`;
+    if (point.date === 'Latest' && chartPoints.length > 1) return `Run ${index + 1}`;
+    return point.date;
+  };
 
   return (
     <div className="brand-coverage-chart">
@@ -213,7 +219,7 @@ function BrandCoverageChart({ rows, trend }) {
         {[40, 30, 20, 10, 0].map((value) => <span key={value}>{value}</span>)}
       </div>
       <span className="brand-chart-y-label" aria-hidden="true">Brand Coverage %</span>
-      <div className="brand-chart-plot">
+      <div className="brand-chart-plot" style={{ '--brand-chart-columns': columnCount }}>
         {chartPoints.map((point, index) => {
           const sourceSegments = (point.brands?.length ? point.brands : fallbackBrands).filter((item) => visibleBrandNames.includes(item.name));
           const segments = sourceSegments.map((item) => ({
@@ -231,7 +237,7 @@ function BrandCoverageChart({ rows, trend }) {
                     <span
                       key={`${point.runId || point.date || index}-${item.name}`}
                       style={{ height: `${segmentHeight}%`, borderTopColor: item.color }}
-                      title={`${item.name}: ${item.value}%`}
+                      aria-label={`${item.name}: ${item.value}%`}
                     />
                   );
                 })}
@@ -243,7 +249,7 @@ function BrandCoverageChart({ rows, trend }) {
                   ))}
                 </div>
               ) : null}
-              <small>{point.date || `Run ${index + 1}`}</small>
+              <small>{formatPointLabel(point, index)}</small>
             </div>
           );
         })}
