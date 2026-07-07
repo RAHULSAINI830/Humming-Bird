@@ -7,6 +7,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const companies = data?.companies || [];
   const users = data?.users || [];
   const accessRecords = data?.accessRecords || [];
+  const businessOwners = users.filter((user) => String(user.roles || '').includes('Business Owner'));
   const providerControlsByCompany = data?.providerControlsByCompany || {};
   const [message, setMessage] = useState('');
   const [deletingCompanyId, setDeletingCompanyId] = useState(null);
@@ -281,6 +282,56 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
           <div><span>Users</span><strong>{stats.users ?? 0}</strong></div>
           <div><span>Access</span><strong>{stats.accessRecords ?? 0}</strong></div>
           <div><span>Active</span><strong>{stats.activeCompanies ?? 0}</strong></div>
+        </div>
+      </article>
+
+      <article className="developer-section-card owner-workspace-control-card">
+        <div className="developer-section-head">
+          <div>
+            <p className="eyebrow">Business Owner Permissions</p>
+            <h2>Workspace creation control</h2>
+            <p>Developer decides how many company workspaces each Business Owner can create. Owners cannot exceed this limit.</p>
+          </div>
+          <span className="soft-pill">{businessOwners.length} owners</span>
+        </div>
+        <div className="owner-limit-grid">
+          {businessOwners.map((owner) => {
+            const owned = Number(owner.owned_workspaces ?? 0);
+            const limit = Number(owner.workspace_limit ?? 1);
+            const remaining = Math.max(limit - owned, 0);
+            const percentage = limit > 0 ? Math.min(100, Math.round((owned / limit) * 100)) : 100;
+
+            return (
+              <button
+                type="button"
+                className="owner-limit-card"
+                key={owner.user_id}
+                onClick={() => openWorkspaceLimitEditor(owner)}
+              >
+                <div className="owner-limit-top">
+                  <LogoChip name={owner.full_name} />
+                  <div>
+                    <strong>{owner.full_name}</strong>
+                    <small>{owner.email}</small>
+                  </div>
+                  <span className={remaining > 0 ? 'owner-limit-status active' : 'owner-limit-status'}>
+                    {remaining > 0 ? `${remaining} left` : 'Limit reached'}
+                  </span>
+                </div>
+                <div className="owner-limit-bar">
+                  <span style={{ width: `${percentage}%` }} />
+                </div>
+                <div className="owner-limit-meta">
+                  <span>{owned} owned</span>
+                  <span>{limit} total limit</span>
+                  <span>{remaining} remaining</span>
+                </div>
+              </button>
+            );
+          })}
+          {!businessOwners.length ? (
+            <DashboardEmptyBlock title="No Business Owners yet" text="Business Owner accounts will appear here after signup or access assignment." />
+          ) : null}
         </div>
       </article>
 

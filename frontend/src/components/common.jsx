@@ -15,6 +15,7 @@ export function LoadingScreen() {
     <main className="loading-screen">
       <section className="loading-stage">
         <div className="loading-visual-shell" aria-hidden="true">
+          <div className="loading-grid-glow" />
           <div className="loading-orbit">
             <span className="loading-core"><BrandLogo centered /></span>
             <i />
@@ -22,29 +23,30 @@ export function LoadingScreen() {
             <i />
           </div>
           <div className="loading-signal-card one">
-            <b>AI</b>
-            <span>Analyzing</span>
+            <b>Session</b>
+            <span>Secure access</span>
           </div>
           <div className="loading-signal-card two">
-            <b>GEO</b>
-            <span>Syncing</span>
+            <b>Workspace</b>
+            <span>Role + limits</span>
           </div>
           <div className="loading-signal-card three">
-            <b>AEO</b>
-            <span>Scoring</span>
+            <b>Signals</b>
+            <span>Saved data</span>
           </div>
         </div>
         <div className="loading-copy">
           <p className="eyebrow">Hummingbird AI</p>
-          <h1>Preparing your visibility workspace</h1>
-          <p>Syncing secure session state, workspace access, and saved intelligence from the backend.</p>
+          <h1>Opening your intelligence cockpit</h1>
+          <p>Loading session, workspace permissions, provider controls, and saved visibility signals from the backend.</p>
         </div>
         <div className="loading-steps" aria-label="Loading progress">
-          <span>Session</span>
-          <span>Workspace</span>
-          <span>Signals</span>
+          <span><i /> Verifying session</span>
+          <span><i /> Loading workspace</span>
+          <span><i /> Preparing dashboard</span>
         </div>
         <div className="loading-bar advanced"><span /></div>
+        <p className="loading-footnote">Usually just a moment. Heavy AI refreshes may take longer.</p>
       </section>
     </main>
   );
