@@ -2145,7 +2145,7 @@ button {
 .brand-chart-plot {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(var(--brand-chart-columns, 7), minmax(62px, 1fr));
+  grid-template-columns: repeat(7, minmax(62px, 1fr));
   gap: 16px;
   align-items: end;
   min-height: 318px;
@@ -2153,7 +2153,54 @@ button {
   border: 0;
   border-radius: 0;
   background:
-    repeating-linear-gradient(to right, transparent 0, transparent calc((100% / var(--brand-chart-columns, 7)) - 1px), #edf0f5 calc((100% / var(--brand-chart-columns, 7)) - 1px), #edf0f5 calc(100% / var(--brand-chart-columns, 7))),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(14.285% - 1px), #edf0f5 calc(14.285% - 1px), #edf0f5 14.285%),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
+    #ffffff;
+}
+
+.brand-chart-plot-1 {
+  grid-template-columns: repeat(1, minmax(62px, 1fr));
+  background:
+    repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
+    #ffffff;
+}
+
+.brand-chart-plot-2 {
+  grid-template-columns: repeat(2, minmax(62px, 1fr));
+  background:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(50% - 1px), #edf0f5 calc(50% - 1px), #edf0f5 50%),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
+    #ffffff;
+}
+
+.brand-chart-plot-3 {
+  grid-template-columns: repeat(3, minmax(62px, 1fr));
+  background:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(33.333% - 1px), #edf0f5 calc(33.333% - 1px), #edf0f5 33.333%),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
+    #ffffff;
+}
+
+.brand-chart-plot-4 {
+  grid-template-columns: repeat(4, minmax(62px, 1fr));
+  background:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(25% - 1px), #edf0f5 calc(25% - 1px), #edf0f5 25%),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
+    #ffffff;
+}
+
+.brand-chart-plot-5 {
+  grid-template-columns: repeat(5, minmax(62px, 1fr));
+  background:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(20% - 1px), #edf0f5 calc(20% - 1px), #edf0f5 20%),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
+    #ffffff;
+}
+
+.brand-chart-plot-6 {
+  grid-template-columns: repeat(6, minmax(62px, 1fr));
+  background:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(16.666% - 1px), #edf0f5 calc(16.666% - 1px), #edf0f5 16.666%),
     repeating-linear-gradient(to bottom, transparent 0, transparent 24.6%, #edf0f5 24.6%, #edf0f5 25%),
     #ffffff;
 }

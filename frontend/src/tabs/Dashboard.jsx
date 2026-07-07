@@ -219,7 +219,7 @@ function BrandCoverageChart({ rows, trend }) {
         {[40, 30, 20, 10, 0].map((value) => <span key={value}>{value}</span>)}
       </div>
       <span className="brand-chart-y-label" aria-hidden="true">Brand Coverage %</span>
-      <div className="brand-chart-plot" style={{ '--brand-chart-columns': columnCount }}>
+      <div className={`brand-chart-plot brand-chart-plot-${Math.min(7, columnCount)}`}>
         {chartPoints.map((point, index) => {
           const sourceSegments = (point.brands?.length ? point.brands : fallbackBrands).filter((item) => visibleBrandNames.includes(item.name));
           const segments = sourceSegments.map((item) => ({
