@@ -19,12 +19,6 @@
       }
     }
   ],
-  "functions": {
-    "api/index.js": {
-      "regions": ["sin1"],
-      "maxDuration": 60
-    }
-  },
   "routes": [
     {
       "src": "/favicon.ico",
