@@ -2442,6 +2442,13 @@ button {
   font-weight: 680;
 }
 
+.overview-insight-description {
+  margin: -2px 18px 14px;
+  color: #59677d;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .overview-insight-list {
   display: grid;
 }
@@ -6282,6 +6289,48 @@ td a {
   font-weight: 900;
 }
 
+.prompt-analysis-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.prompt-analysis-strip article {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e8eef6;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 157, 0, 0.08), transparent 42%),
+    #ffffff;
+}
+
+.prompt-analysis-strip span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.prompt-analysis-strip strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.prompt-analysis-strip small {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .provider-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6384,6 +6433,13 @@ td a {
   background: #f8fafc;
 }
 
+.tray-response-note {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .tray-section {
   margin-top: 14px;
 }
@@ -6430,6 +6486,10 @@ td a {
 
   .provider-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .prompt-analysis-strip {
+    grid-template-columns: 1fr;
   }
 }
 

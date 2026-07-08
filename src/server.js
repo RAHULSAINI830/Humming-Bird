@@ -1064,7 +1064,12 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
       coverage: checkedPrompts.length ? Math.round((competitor.count / checkedPrompts.length) * 100) : 0,
       share: mentionUniverse ? Math.round((competitor.count / mentionUniverse) * 100) : 0
     }))
-  ].sort((a, b) => b.mentions - a.mentions || a.name.localeCompare(b.name));
+  ]
+    .sort((a, b) => b.mentions - a.mentions || a.name.localeCompare(b.name))
+    .map((brand, index) => ({ ...brand, position: index + 1 }));
+  const ownBrandPosition = checkedPrompts.length
+    ? brandRanking.find((brand) => brand.type === 'own')?.position || null
+    : null;
   const topPromptsByBrand = checkedPrompts
     .map((prompt) => ({
       id: prompt.id,
@@ -1211,6 +1216,7 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
     visibilityScore,
     shareOfVoice,
     citationCoverage,
+    averagePosition: ownBrandPosition,
     activeProviderCount: activeProviders.length,
     availableProviderLabels: activeProviders.map((provider) => provider.label),
     providers,

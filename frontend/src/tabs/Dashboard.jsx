@@ -22,6 +22,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
   const checkedPrompts = displayVisibility.checkedPrompts ?? 0;
   const ownBrand = brandRanking.find((item) => item.type === 'own') || brandRanking[0];
   const competitorRows = brandRanking.filter((item) => item.type !== 'own');
+  const averageBrandPosition = displayVisibility.averagePosition ? `#${displayVisibility.averagePosition}` : 'No data';
   const responseRunCount = Number(displayVisibility.responseRunCount || displayVisibility.brandTrend?.length || displayVisibility.domainTrend?.length || 0);
   const responseWindowLabel = responseRunCount ? `Last ${Math.min(7, responseRunCount)} responses` : 'Last 7 responses';
   const engineLabel = activeProviders.length ? activeProviders.join(', ') : 'All engines';
@@ -117,11 +118,12 @@ export default function Dashboard({ data, session, workspace, goTo }) {
           />
           <OverviewInsightCard
             title="Average Brand Position"
-            value={displayVisibility.averagePosition ?? 0}
-            subtitle="Position trend"
+            value={averageBrandPosition}
+            subtitle="Lower is better · your rank by AI mentions"
+            description="This is where your brand ranks against tracked competitors based on saved AI prompt responses. #1 means Hummingbird found your brand mentioned more often than competitors."
             rows={[
-              { brand: ownBrand || { name: session.selectedCompanyName, website_url: company.website_url, logo_url: company.logo_url }, count: displayVisibility.averagePosition ?? 0, delta: hasRealData ? '+4' : '—' },
-              ...competitorRows.slice(0, 2).map((item) => ({ brand: item, count: item.position ?? 0, delta: `${item.share ?? 0}%` }))
+              { brand: ownBrand || { name: session.selectedCompanyName, website_url: company.website_url, logo_url: company.logo_url }, count: averageBrandPosition, delta: hasRealData ? `${ownBrand?.share ?? 0}% share` : '—' },
+              ...competitorRows.slice(0, 2).map((item) => ({ brand: item, count: item.position ? `#${item.position}` : '—', delta: `${item.share ?? 0}% share` }))
             ]}
           />
         </div>
@@ -285,7 +287,7 @@ function BrandCoverageChart({ rows, trend }) {
   );
 }
 
-function OverviewInsightCard({ title, value, subtitle, rows }) {
+function OverviewInsightCard({ title, value, subtitle, description, rows }) {
   return (
     <article className="overview-insight-card">
       <div className="overview-insight-head">
@@ -295,6 +297,7 @@ function OverviewInsightCard({ title, value, subtitle, rows }) {
         </div>
         <strong>{value}</strong>
       </div>
+      {description ? <p className="overview-insight-description">{description}</p> : null}
       <div className="overview-insight-list">
         {(rows || []).slice(0, 3).map((row) => {
           const brand = row.brand || { name: row.name };

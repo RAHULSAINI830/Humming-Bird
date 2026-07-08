@@ -241,6 +241,15 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
     ? (prompt[provider.field] || (provider.key === 'gemini' ? prompt.ai_response_summary : '') || 'NA')
     : 'NA';
   const isOpen = Boolean(prompt);
+  const hasResponse = response && response !== 'NA';
+  const competitors = prompt?.competitor_mentions_parsed || [];
+  const citations = prompt?.recommended_citations_parsed || [];
+  const checkedProviders = prompt
+    ? providerConfigs.filter((item) => {
+      const providerResponse = prompt[item.field] || (item.key === 'gemini' ? prompt.ai_response_summary : '') || 'NA';
+      return providerResponse && providerResponse !== 'NA';
+    }).length
+    : 0;
 
   return (
     <div className={`response-tray-layer ${isOpen ? 'open' : ''}`} aria-hidden={!isOpen}>
@@ -262,6 +271,7 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
               <div className="tray-meta-row">
                 <StatusBadge active={prompt.brand_mentioned}>{prompt.brand_mentioned ? 'Brand mentioned' : 'No brand mention'}</StatusBadge>
                 <span>{prompt.visibility_status || 'not_checked'}</span>
+                <span>{checkedProviders}/4 provider responses saved</span>
               </div>
             </div>
 
@@ -278,10 +288,28 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
                   >
                     <ProviderLogo providerKey={item.key} />
                     <strong>{item.label}</strong>
-                    <small>{hasResponse ? 'Response saved' : 'NA'}</small>
+                    <small>{hasResponse ? 'Exact response saved' : 'Not connected / NA'}</small>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="prompt-analysis-strip">
+              <article>
+                <span>Brand mention</span>
+                <strong>{prompt.brand_mentioned ? 'Detected' : 'Not detected'}</strong>
+                <small>{prompt.brand_mentioned ? 'Your brand appears in saved AI answer data.' : 'Saved AI answer data did not mention your brand.'}</small>
+              </article>
+              <article>
+                <span>Competitors in this prompt</span>
+                <strong>{competitors.length}</strong>
+                <small>{competitors.length ? 'Competitor names were found in saved response analysis.' : 'No competitor mentions found yet.'}</small>
+              </article>
+              <article>
+                <span>Citation pages</span>
+                <strong>{citations.length}</strong>
+                <small>{citations.length ? 'Sources/citation opportunities saved for this prompt.' : 'No citation sources saved yet.'}</small>
+              </article>
             </div>
 
             <div className="tray-response-panel">
@@ -289,17 +317,20 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
                 <ProviderLogo providerKey={provider.key} />
                 <div>
                   <h3>{provider.label}</h3>
-                  <p>{response && response !== 'NA' ? 'Exact saved response' : 'Provider response not available yet'}</p>
+                  <p>{hasResponse ? 'Exact saved response from this provider' : 'Provider response not available yet'}</p>
                 </div>
               </div>
-              <div className={response && response !== 'NA' ? 'tray-response-text' : 'tray-response-text empty'}>
-                {response && response !== 'NA' ? response : 'NA — API key is not connected for this provider yet.'}
+              <div className={hasResponse ? 'tray-response-text' : 'tray-response-text empty'}>
+                {hasResponse ? response : 'NA — this provider is not enabled for the workspace yet, or no response has been saved.'}
               </div>
+              <p className="tray-response-note">
+                Hummingbird sends the prompt exactly as written to the enabled AI provider, saves the returned answer, then detects brand mentions, competitors, and citations from the saved answer.
+              </p>
             </div>
 
             <div className="tray-section">
-              <h3>Competitors mentioned</h3>
-              <ChipList items={(prompt.competitor_mentions_parsed || []).map((item) => ({
+              <h3>Competitors mentioned in this prompt</h3>
+              <ChipList items={competitors.map((item) => ({
                 label: item.competitor_name || item.name || 'Competitor',
                 url: item.website_url || item.url || ''
               }))} empty="None" />
@@ -307,9 +338,9 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
 
             <div className="tray-section">
               <h3>Citations</h3>
-              {(prompt.recommended_citations_parsed || []).length ? (
+              {citations.length ? (
                 <div className="citation-mini-list">
-                  {prompt.recommended_citations_parsed.map((citation, index) => (
+                  {citations.map((citation, index) => (
                     <a href={citation.url || '#'} target="_blank" rel="noreferrer" key={`${citation.url}-${index}`}>
                       <strong>{citation.page_title || citation.source_owner || 'Citation page'}</strong>
                       <small>{citation.url || 'URL not available'}</small>
