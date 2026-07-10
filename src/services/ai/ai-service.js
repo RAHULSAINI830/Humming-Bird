@@ -49,6 +49,22 @@ function providerEnabled(providerControls, providerName, refreshType = 'manual')
   return true;
 }
 
+function providerConfigured(providerName) {
+  if (providerName === 'gemini') return Boolean(process.env.GEMINI_API_KEY);
+  if (providerName === 'openai') return Boolean(process.env.OPENAI_API_KEY);
+  if (providerName === 'perplexity') return Boolean(process.env.PERPLEXITY_API_KEY);
+  if (providerName === 'claude') return Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
+  return false;
+}
+
+function shouldRunProvider(providerControls, providerName, refreshType, initialProviderBootstrap) {
+  if (initialProviderBootstrap) {
+    return providerConfigured(providerName);
+  }
+
+  return providerEnabled(providerControls, providerName, refreshType);
+}
+
 function promptSliceForProvider(prompts, providerControls, providerName) {
   const control = controlFor(providerControls, providerName);
 
@@ -119,14 +135,18 @@ function mergeProviderResults(baseResults, providerResults, providerName) {
 async function analyzePromptVisibility(company, prompts, competitors, analysis, options = {}) {
   const providerControls = options.providerControls || [];
   const refreshType = options.refreshType || 'manual';
+  const initialProviderBootstrap = Boolean(options.initialProviderBootstrap);
+  const promptsFor = (providerName) => initialProviderBootstrap
+    ? prompts
+    : promptSliceForProvider(prompts, providerControls, providerName);
   let results = [];
   const errors = [];
 
-  if (providerEnabled(providerControls, 'gemini', refreshType)) {
+  if (shouldRunProvider(providerControls, 'gemini', refreshType, initialProviderBootstrap)) {
     try {
       results = (await GeminiProvider.analyzePromptVisibility(
         company,
-        promptSliceForProvider(prompts, providerControls, 'gemini'),
+        promptsFor('gemini'),
         competitors,
         analysis
       )).map((result) => ({
@@ -138,8 +158,8 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     }
   }
 
-  if (providerEnabled(providerControls, 'openai', refreshType)) {
-    const openAiPrompts = promptSliceForProvider(prompts, providerControls, 'openai');
+  if (shouldRunProvider(providerControls, 'openai', refreshType, initialProviderBootstrap)) {
+    const openAiPrompts = promptsFor('openai');
 
     if (openAiPrompts.length && process.env.OPENAI_API_KEY) {
       try {
@@ -151,8 +171,8 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     }
   }
 
-  if (providerEnabled(providerControls, 'perplexity', refreshType)) {
-    const perplexityPrompts = promptSliceForProvider(prompts, providerControls, 'perplexity');
+  if (shouldRunProvider(providerControls, 'perplexity', refreshType, initialProviderBootstrap)) {
+    const perplexityPrompts = promptsFor('perplexity');
 
     if (perplexityPrompts.length && process.env.PERPLEXITY_API_KEY) {
       try {
@@ -164,8 +184,8 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     }
   }
 
-  if (providerEnabled(providerControls, 'claude', refreshType)) {
-    const claudePrompts = promptSliceForProvider(prompts, providerControls, 'claude');
+  if (shouldRunProvider(providerControls, 'claude', refreshType, initialProviderBootstrap)) {
+    const claudePrompts = promptsFor('claude');
 
     if (claudePrompts.length && (process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY)) {
       try {

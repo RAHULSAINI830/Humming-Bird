@@ -85,7 +85,8 @@ Business Analysis uses the platform Gemini key from `.env`:
 
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-flash-lite-latest
+GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-2.0-flash-lite,gemini-flash-latest
 GEMINI_TIMEOUT=60000
 GEMINI_RETRY_ATTEMPTS=3
 ```

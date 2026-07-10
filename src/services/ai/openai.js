@@ -12,6 +12,11 @@ function openaiKeyEnding() {
   return key ? key.slice(-6) : 'missing';
 }
 
+function openaiKeyLooksValid() {
+  const key = String(process.env.OPENAI_API_KEY || '').trim();
+  return /^sk-(proj-|svcacct-)?[A-Za-z0-9_-]{20,}/.test(key) && !key.startsWith('sk-ant-');
+}
+
 function brandAliasesFor(company) {
   const aliases = [String(company?.company_name || '').trim()];
 
@@ -161,6 +166,10 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     throw new Error('OPENAI_MISSING_KEY');
   }
 
+  if (!openaiKeyLooksValid()) {
+    throw createOpenAiError('OPENAI_INVALID_KEY_FORMAT', 'OPENAI_API_KEY does not look like an OpenAI API key.', '');
+  }
+
   const results = [];
 
   for (const prompt of prompts) {
@@ -215,6 +224,7 @@ function getProviderDiagnostics() {
     provider: 'OpenAI',
     model: openaiModel(),
     hasApiKey: Boolean(process.env.OPENAI_API_KEY),
+    keyLooksValid: openaiKeyLooksValid(),
     keyEnding: openaiKeyEnding(),
     timeoutMs: openaiTimeout()
   };

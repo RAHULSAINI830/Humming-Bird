@@ -192,6 +192,35 @@ export default function Settings({ data, onChange, onRefreshVisibility, onCreate
             {refreshing ? 'Regenerating…' : 'Regenerate responses'}
           </button>
         </div>
+        {refreshing ? (
+          <div className="settings-ai-refresh-loader" role="status" aria-live="polite">
+            <div className="settings-ai-refresh-visual" aria-hidden="true">
+              <span className="settings-ai-refresh-core">
+                <SettingsIcon name="sparkles" />
+              </span>
+              <i className="provider-dot gemini">H</i>
+              <i className="provider-dot chatgpt">G</i>
+              <i className="provider-dot claude">C</i>
+              <i className="provider-dot perplexity">P</i>
+              <b />
+              <b />
+            </div>
+            <div className="settings-ai-refresh-copy">
+              <p className="eyebrow">Live regeneration</p>
+              <h3>Hummingbird is rebuilding the response layer</h3>
+              <p>
+                Sending saved prompts to available AI providers, checking brand mentions, competitor mentions,
+                citations, and saving a fresh comparison snapshot.
+              </p>
+              <div className="settings-ai-refresh-steps">
+                <span><i />Prompt queue</span>
+                <span><i />Provider responses</span>
+                <span><i />Snapshot saved</span>
+              </div>
+              <div className="settings-ai-refresh-bar"><span /></div>
+            </div>
+          </div>
+        ) : null}
         {refreshError ? <div className="notice error">{refreshError}</div> : null}
         {refreshMessage ? <div className="success-notice">{refreshMessage}</div> : null}
         <div className="settings-refresh-meta">

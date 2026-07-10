@@ -75,6 +75,21 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
   const hasCompetitors = competitors.length > 0;
   const hasPrompts = prompts.length > 0;
   const hasChecks = (setupStatus?.counts?.checkedPrompts || 0) > 0;
+  const activeStep = loading === 'generate-competitors'
+    ? 'competitors'
+    : loading === 'generate-prompts'
+      ? 'prompts'
+      : loading === 'run-checks'
+        ? 'checks'
+        : !hasAnalysis || !hasCompetitors
+          ? 'analysis'
+          : !hasPrompts
+            ? 'competitors'
+            : !hasChecks
+              ? 'prompts'
+              : 'done';
+  const activeStepIndex = Math.max(0, steps.findIndex((step) => step.key === activeStep));
+  const loadingDetails = setupLoadingDetails(loading || activeStep);
 
   async function addCompetitor(event) {
     event.preventDefault();
@@ -133,15 +148,18 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
 
             {error ? <div className="notice">{error}</div> : null}
             {loading ? (
-              <div className="setup-live-status">
+              <div className="setup-live-status advanced">
                 <div className="setup-live-orb" aria-hidden="true">
                   <span />
                   <i />
                   <i />
                 </div>
                 <div>
-                  <strong>{loadingLabel(loading)}</strong>
-                  <p>Hummingbird AI is reading saved company data, checking signals, and writing clean results back to your database.</p>
+                  <strong>{loadingDetails.title}</strong>
+                  <p>{loadingDetails.text}</p>
+                  <div className="setup-live-provider-row" aria-hidden="true">
+                    {loadingDetails.providers.map((provider) => <em key={provider}>{provider}</em>)}
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -162,7 +180,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
                   </button>
                 ) : !hasChecks ? (
                   <button className="setup-generate-button" type="button" onClick={() => onAction('run-checks')} disabled={Boolean(loading)}>
-                    {loading === 'run-checks' ? 'Running Hummingbird AI checks…' : 'Confirm prompts & run AI checks'}
+                    {loading === 'run-checks' ? 'Generating overview data…' : 'Confirm prompts & generate overview'}
                   </button>
                 ) : null}
               </div>
@@ -180,7 +198,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
             </div>
             <div className="setup-step-list">
               {steps.map((step, index) => (
-                <div className={`${step.complete ? 'complete' : ''} ${loading && !step.complete ? 'running' : ''}`} key={step.key}>
+                <div className={`${step.complete ? 'complete' : ''} ${index === activeStepIndex ? 'active' : ''} ${loading && index === activeStepIndex ? 'running' : ''}`} key={step.key}>
                   <b>{step.complete ? '✓' : index + 1}</b>
                   <span>
                     <strong>{step.label}</strong>
@@ -192,17 +210,40 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
           </article>
         </div>
 
-        <section className="setup-review-grid">
-          <article className="setup-review-card">
+        <section className="setup-review-grid single-step">
+          {activeStep === 'analysis' ? (
+          <article className="setup-review-card focus-card">
             <div className="setup-review-head">
               <p className="eyebrow">Analysis review</p>
               <span>{hasAnalysis ? 'Ready to confirm' : 'Not generated'}</span>
             </div>
             <h2>{analysis?.detected_industry || 'Business analysis'}</h2>
             <p>{analysis?.business_summary || 'Generate the business analysis first. You will review it before discovering competitors.'}</p>
+            {hasAnalysis ? (
+              <div className="setup-analysis-details">
+                <div>
+                  <span>Detected services</span>
+                  <strong>{analysis.detected_services || analysis.main_services || 'Not available'}</strong>
+                </div>
+                <div>
+                  <span>Target audience</span>
+                  <strong>{analysis.target_audience_summary || analysis.target_audience || 'Not available'}</strong>
+                </div>
+                <div>
+                  <span>Service area</span>
+                  <strong>{analysis.service_area_summary || analysis.service_area || 'Not available'}</strong>
+                </div>
+                <div>
+                  <span>Positioning</span>
+                  <strong>{analysis.positioning_summary || 'Not available'}</strong>
+                </div>
+              </div>
+            ) : null}
           </article>
+          ) : null}
 
-          <article className="setup-review-card">
+          {activeStep === 'competitors' ? (
+          <article className="setup-review-card focus-card">
             <div className="setup-review-head">
               <p className="eyebrow">Competitors review</p>
               <span>{competitorLimit ? `${competitorLimit.used}/${competitorLimit.limit} competitors` : `${competitors.length} competitors`}</span>
@@ -225,8 +266,10 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               </form>
             ) : null}
           </article>
+          ) : null}
 
-          <article className="setup-review-card wide">
+          {activeStep === 'prompts' ? (
+          <article className="setup-review-card wide focus-card">
             <div className="setup-review-head">
               <p className="eyebrow">Prompt review</p>
               <span>{promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts` : `${prompts.length} prompts`}</span>
@@ -250,6 +293,28 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               </form>
             ) : null}
           </article>
+          ) : null}
+
+          {activeStep === 'checks' ? (
+            <article className="setup-review-card wide focus-card setup-checks-ready-card">
+              <div className="setup-review-head">
+                <p className="eyebrow">Overview generation</p>
+                <span>{prompts.length} prompts ready</span>
+              </div>
+              <h2>Ready to build your first overview</h2>
+              <p>
+                Hummingbird will now send each saved prompt to every configured AI provider for the first run.
+                This first setup run does not require Developer refresh permission. Future regenerations will follow
+                the limits and permissions configured in Developer Admin.
+              </p>
+              <div className="setup-check-provider-grid">
+                <span>Hummingbird AI</span>
+                <span>ChatGPT if connected</span>
+                <span>Claude if connected</span>
+                <span>Perplexity if connected</span>
+              </div>
+            </article>
+          ) : null}
         </section>
       </section>
     </main>
@@ -570,6 +635,57 @@ function loadingLabel(action) {
   };
 
   return labels[action] || 'Hummingbird AI is working';
+}
+
+function setupLoadingDetails(action) {
+  const details = {
+    analysis: {
+      title: 'Business analysis is the next step',
+      text: 'Hummingbird will read the saved company basics and generate the business profile before anything else.',
+      providers: ['Profile', 'Website', 'Market']
+    },
+    'generate-analysis': {
+      title: 'Generating business intelligence',
+      text: 'Reading the company name, website, and logo, then saving structured business intelligence to the database.',
+      providers: ['Hummingbird AI', 'Website', 'Database']
+    },
+    competitors: {
+      title: 'Competitor discovery is next',
+      text: 'Review the business analysis, then Hummingbird will discover related competitors for this workspace.',
+      providers: ['Analysis', 'Market', 'Competitors']
+    },
+    'generate-competitors': {
+      title: 'Discovering relevant competitors',
+      text: 'Mapping the business category against real competitors and saving the competitor list for review.',
+      providers: ['Industry', 'Category', 'Competitors']
+    },
+    prompts: {
+      title: 'Prompt generation is next',
+      text: 'Review the competitor list, then generate buyer-intent prompts related to this business and market.',
+      providers: ['Competitors', 'Intent', 'Prompts']
+    },
+    'generate-prompts': {
+      title: 'Building buyer-intent prompts',
+      text: 'Creating prompts a real customer would ask AI assistants when searching for this type of company.',
+      providers: ['Prompt 1', 'Prompt 2', 'Prompt 3']
+    },
+    checks: {
+      title: 'Overview generation is ready',
+      text: 'Confirm the prompts to generate the first AI response set and build the overview dashboard.',
+      providers: ['Gemini', 'ChatGPT', 'Claude', 'Perplexity']
+    },
+    'run-checks': {
+      title: 'Generating your overview data',
+      text: 'Sending prompts to every configured AI provider for the first run, detecting brand mentions, competitors, citations, and saving the comparison snapshot.',
+      providers: ['Hummingbird AI', 'ChatGPT', 'Claude', 'Perplexity']
+    }
+  };
+
+  return details[action] || {
+    title: loadingLabel(action),
+    text: 'Hummingbird AI is writing clean results back to your database.',
+    providers: ['Hummingbird AI', 'Database', 'Dashboard']
+  };
 }
 
 export function TablePage({ title, subtitle, children }) {

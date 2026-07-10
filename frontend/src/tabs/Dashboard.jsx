@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogoChip, DashboardEmptyBlock } from '../components/common';
+import { LogoChip, DashboardEmptyBlock, ProviderLogo } from '../components/common';
 import aiVisibilityBg from '../assets/dashboard/ai-visibility-bg.png';
 import aiVisibilityIcon from '../assets/dashboard/ai-visibility-icon.png';
 import citationCoverageBg from '../assets/dashboard/citation-coverage-bg.png';
@@ -7,6 +7,52 @@ import citationCoverageIcon from '../assets/dashboard/citation-coverage-icon.png
 import overviewCardBg from '../assets/dashboard/overview-card-bg.png';
 import shareOfVoiceBg from '../assets/dashboard/share-of-voice-bg.png';
 import shareOfVoiceIcon from '../assets/dashboard/share-of-voice-icon.png';
+
+function cleanFileName(value) {
+  return String(value || 'overview').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'overview';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function buildExcelWorkbook(sections) {
+  const sectionHtml = sections.map(([title, rows]) => `
+    <h2>${escapeHtml(title)}</h2>
+    <table>
+      ${(rows || []).map((row, rowIndex) => `
+        <tr>${(row || []).map((cell) => rowIndex === 0
+          ? `<th>${escapeHtml(cell)}</th>`
+          : `<td>${escapeHtml(cell)}</td>`).join('')}</tr>
+      `).join('')}
+    </table>
+  `).join('<br/>');
+
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <style>
+        body { font-family: Arial, sans-serif; color: #000142; }
+        h1 { color: #000142; }
+        h2 { margin-top: 24px; color: #ff8500; }
+        table { border-collapse: collapse; margin-bottom: 18px; width: 100%; }
+        th { background: #f4f7fb; color: #000142; font-weight: 700; }
+        th, td { border: 1px solid #d9dee8; padding: 8px; text-align: left; vertical-align: top; }
+      </style>
+    </head>
+    <body>
+      <h1>Hummingbird Overview Export</h1>
+      <p>Generated on ${escapeHtml(new Date().toLocaleString())}</p>
+      ${sectionHtml}
+    </body>
+  </html>`;
+}
 
 export default function Dashboard({ data, session, workspace, goTo }) {
   const company = data?.company || data?.companyProfile || {};
@@ -28,6 +74,58 @@ export default function Dashboard({ data, session, workspace, goTo }) {
   const engineLabel = activeProviders.length ? activeProviders.join(', ') : 'All engines';
 
   const percentOrEmpty = (value) => value === null || value === undefined ? 'No data yet' : `${value}%`;
+  const exportOverview = () => {
+    const fileCompanyName = cleanFileName(session.selectedCompanyName || 'workspace');
+    const sections = [
+      ['Overview KPIs', [
+        ['Metric', 'Value'],
+        ['Company', session.selectedCompanyName || ''],
+        ['Role', session.selectedRoleName || ''],
+        ['Checked prompts', checkedPrompts],
+        ['AI visibility score', percentOrEmpty(displayVisibility.visibilityScore)],
+        ['Share of voice', percentOrEmpty(displayVisibility.shareOfVoice)],
+        ['Citation coverage', percentOrEmpty(displayVisibility.citationCoverage)],
+        ['Brand mentions', displayVisibility.brandMentioned ?? 0],
+        ['Average brand position', averageBrandPosition],
+        ['Available AI sources', activeProviders.join(', ') || 'None']
+      ]],
+      ['Brand Ranking', [
+        ['Rank', 'Brand', 'Type', 'Mentions', 'Coverage', 'Share'],
+        ...brandRanking.map((row, index) => [index + 1, row.name, row.type || '', row.mentions ?? 0, `${row.coverage ?? 0}%`, `${row.share ?? 0}%`])
+      ]],
+      ['Top Prompts by Brand Mentions', [
+        ['Rank', 'Prompt', 'Brand mentioned', 'Competitors', 'Citations'],
+        ...topPromptsByBrand.map((row, index) => [index + 1, row.prompt, row.mentions ?? 0, row.competitors ?? 0, row.citations ?? 0])
+      ]],
+      ['Citations', [
+        ['Rank', 'URL', 'Domain', 'Citation share', 'Citations'],
+        ...citationsTable.map((row, index) => [index + 1, row.url, row.domain || '', `${row.share ?? 0}%`, row.citations ?? 0])
+      ]],
+      ['Domain Citations', [
+        ['Rank', 'Domain', 'Citation share', 'Citations'],
+        ...domainCitations.map((row, index) => [index + 1, row.domain, `${row.share ?? 0}%`, row.citations ?? 0])
+      ]],
+      ['Brand Coverage Trend', [
+        ['Run', 'Generated at', 'Brand', 'Coverage %', 'Mentions'],
+        ...(displayVisibility.brandTrend || []).flatMap((point, index) =>
+          (point.brands || []).map((brand) => [point.date || `Run ${index + 1}`, point.created_at || '', brand.name || '', brand.value ?? 0, brand.mentions ?? 0])
+        )
+      ]],
+      ['Domain Coverage Trend', [
+        ['Run', 'Generated at', 'Own domain citations'],
+        ...(displayVisibility.domainTrend || []).map((point, index) => [point.date || `Run ${index + 1}`, point.created_at || '', point.value ?? 0])
+      ]]
+    ];
+    const html = buildExcelWorkbook(sections);
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `hummingbird-overview-${fileCompanyName}-${new Date().toISOString().slice(0, 10)}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(link.href);
+  };
 
   return (
     <section className="page-content dashboard-overview-page">
@@ -37,7 +135,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
           <p>Company: {session.selectedCompanyName} · Role: <strong>{session.selectedRoleName}</strong></p>
         </div>
         <div className="overview-header-actions">
-          <button type="button" className="overview-export-button" onClick={() => window.print()}>
+          <button type="button" className="overview-export-button" onClick={exportOverview}>
             Export Overview
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -51,7 +149,9 @@ export default function Dashboard({ data, session, workspace, goTo }) {
               <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" />
             </svg>
           </button>
-          <LogoChip name={session.user.fullName} />
+          <span className="overview-ai-logo-chip" title="Hummingbird AI">
+            <ProviderLogo providerKey="gemini" />
+          </span>
         </div>
       </div>
 
@@ -102,7 +202,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
 
       <div className="overview-analytics-row">
         <span className="overview-grid-separator overview-grid-separator-analytics" aria-hidden="true" />
-        <DashboardPanel title="Brand Coverage Over Time" action="Me + top competitors">
+        <DashboardPanel title="Brand Coverage Over Time" action="Me + top competitors" className="brand-coverage-panel">
           <BrandCoverageChart rows={brandRanking} trend={displayVisibility.brandTrend || []} />
         </DashboardPanel>
 
@@ -209,7 +309,13 @@ function BrandCoverageChart({ rows, trend }) {
   const colorForBrand = (name) => colors[Math.max(0, visibleBrandNames.indexOf(name)) % colors.length];
   const hasCoverageData = chartPoints.some((point) => (point.brands || []).length || Number(point.value || 0) > 0);
   const columnCount = Math.max(1, chartPoints.length);
-  const chartMax = 40;
+  const totals = chartPoints.map((point) => {
+    const sourceSegments = (point.brands?.length ? point.brands : fallbackBrands).filter((item) => visibleBrandNames.includes(item.name));
+    return sourceSegments.reduce((sum, item) => sum + Math.max(0, Number(item.value ?? item.coverage ?? item.share ?? item.mentions ?? 0)), 0);
+  });
+  const maxTotal = Math.max(40, ...totals);
+  const chartMax = Math.ceil(maxTotal / 10) * 10;
+  const yTicks = Array.from({ length: Math.floor(chartMax / 10) + 1 }, (_, index) => chartMax - index * 10);
   const formatCreatedAt = (value) => {
     if (!value) return '';
     const date = new Date(String(value).replace(' ', 'T'));
@@ -232,10 +338,10 @@ function BrandCoverageChart({ rows, trend }) {
   return (
     <div className="brand-coverage-chart">
       <div className="brand-chart-y-axis" aria-hidden="true">
-        {[40, 30, 20, 10, 0].map((value) => <span key={value}>{value}</span>)}
+        {yTicks.map((value) => <span key={value}>{value}</span>)}
       </div>
       <span className="brand-chart-y-label" aria-hidden="true">Brand Coverage %</span>
-      <div className={`brand-chart-plot brand-chart-plot-${Math.min(7, columnCount)}`}>
+      <div className={`brand-chart-plot brand-chart-plot-${Math.min(7, columnCount)}`} style={{ '--chart-grid-step': `${100 / Math.max(1, yTicks.length - 1)}%` }}>
         {chartPoints.map((point, index) => {
           const sourceSegments = (point.brands?.length ? point.brands : fallbackBrands).filter((item) => visibleBrandNames.includes(item.name));
           const segments = sourceSegments.map((item) => ({
@@ -317,9 +423,9 @@ function OverviewInsightCard({ title, value, subtitle, description, rows }) {
   );
 }
 
-function DashboardPanel({ title, action, children }) {
+function DashboardPanel({ title, action, children, className = '' }) {
   return (
-    <article className="dashboard-panel">
+    <article className={`dashboard-panel ${className}`}>
       <div className="dashboard-panel-head">
         <h2>{title}</h2>
         {action ? <span>{action}</span> : null}

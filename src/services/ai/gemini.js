@@ -44,8 +44,40 @@ loadLocalEnv();
 
 let hasLoggedAiProviderConfig = false;
 
+function normalizeGeminiModelName(model) {
+  const normalized = String(model || '')
+    .trim()
+    .replace(/^models\//, '');
+
+  const blockedOrExpensiveDefaults = new Map([
+    ['gemini-3.5-flash', 'gemini-flash-lite-latest'],
+    ['gemini-2.5-flash', 'gemini-flash-lite-latest']
+  ]);
+
+  return blockedOrExpensiveDefaults.get(normalized) || normalized;
+}
+
 function geminiModel() {
-  return process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  return normalizeGeminiModelName(process.env.GEMINI_MODEL || 'gemini-flash-lite-latest');
+}
+
+function geminiFallbackModels() {
+  const configured = String(process.env.GEMINI_FALLBACK_MODELS || '')
+    .split(',')
+    .map(normalizeGeminiModelName)
+    .filter(Boolean);
+
+  return configured.length
+    ? configured
+    : ['gemini-3.1-flash-lite', 'gemini-2.0-flash-lite', 'gemini-flash-latest'];
+}
+
+function geminiModelCandidates() {
+  return [...new Set([geminiModel(), ...geminiFallbackModels()].filter(Boolean))];
+}
+
+function geminiModelPath(model = geminiModel()) {
+  return `models/${normalizeGeminiModelName(model)}`;
 }
 
 function geminiTimeout() {
@@ -78,6 +110,7 @@ function getProviderDiagnostics() {
   return {
     provider: 'Hummingbird AI',
     model: geminiModel(),
+    fallbackModels: geminiFallbackModels(),
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
     keyEnding: geminiKeyEnding(),
     timeoutMs: geminiTimeout(),
@@ -104,6 +137,29 @@ function createAiError(code, providerMessage = '', providerStatus = '') {
   error.providerMessage = String(providerMessage || '').slice(0, 500);
   error.providerStatus = providerStatus;
   return error;
+}
+
+function createNetworkError(error) {
+  const causeMessage = error?.cause?.message || error?.message || 'Network request failed';
+  return createAiError('AI_NETWORK_ERROR', causeMessage);
+}
+
+function canTryNextGeminiModel(status, message) {
+  const normalizedMessage = String(message || '').toLowerCase();
+
+  if (/prepayment credits are depleted|credits are depleted|billing|api key not valid/.test(normalizedMessage)) {
+    return false;
+  }
+
+  if (/quota exceeded.*model:|free_tier_requests.*model:|retry in/i.test(message || '')) {
+    return true;
+  }
+
+  if (status >= 500) {
+    return true;
+  }
+
+  return /model.*no longer available|model.*not found|not supported|high demand|rate limit|rate-limit|temporarily unavailable|quota exceeded/.test(normalizedMessage);
 }
 
 const ANALYSIS_FIELDS = [
@@ -872,79 +928,114 @@ function sleep(ms) {
 async function callGemini(body, signal) {
   let lastError = null;
   const attempts = geminiRetryAttempts();
+  const modelCandidates = geminiModelCandidates();
 
   logAiProviderConfigOnce();
 
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel())}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': process.env.GEMINI_API_KEY
-        },
-        signal,
-        body: JSON.stringify(body)
-      }
-    );
-
-    if (response.ok) {
-      return response;
-    }
-
-    let errorMessage = '';
-
-    try {
-      const errorPayload = await response.json();
-      errorMessage = String(errorPayload?.error?.message || '');
-    } catch {
-      errorMessage = '';
-    }
-
-    if (response.status === 401 || response.status === 403) {
-      console.warn(
-        `Hummingbird AI auth failed: status=${response.status}, model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+  for (const model of modelCandidates) {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/${geminiModelPath(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': process.env.GEMINI_API_KEY
+          },
+          signal,
+          body: JSON.stringify(body)
+        }
       );
-      throw createAiError('AI_AUTH_FAILED', errorMessage, response.status);
-    }
 
-    if (response.status === 429) {
-      lastError = createAiError('AI_RATE_LIMITED', errorMessage, response.status);
+      if (response.ok) {
+        return response;
+      }
 
-      if (attempt < attempts) {
-        await sleep(retryDelayMs(response, attempt));
-        continue;
+      let errorMessage = '';
+
+      try {
+        const errorPayload = await response.json();
+        errorMessage = String(errorPayload?.error?.message || '');
+      } catch {
+        errorMessage = '';
+      }
+
+      const hasFallbackModel = model !== modelCandidates[modelCandidates.length - 1];
+
+      if (response.status === 401 || response.status === 403) {
+        console.warn(
+          `Hummingbird AI auth failed: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+        );
+        throw createAiError('AI_AUTH_FAILED', errorMessage, response.status);
+      }
+
+      if (response.status === 429) {
+        lastError = createAiError('AI_RATE_LIMITED', errorMessage, response.status);
+
+        if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
+          console.warn(
+            `Hummingbird AI switching model after rate limit: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          );
+          break;
+        }
+
+        if (attempt < attempts) {
+          await sleep(retryDelayMs(response, attempt));
+          continue;
+        }
+
+        console.warn(
+          `Hummingbird AI rate limited: model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+        );
+        throw lastError;
+      }
+
+      if (/quota|billing|permission|api key not valid/i.test(errorMessage)) {
+        if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
+          console.warn(
+            `Hummingbird AI switching model after quota response: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, status=${response.status}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          );
+          break;
+        }
+
+        console.warn(
+          `Hummingbird AI request rejected: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+        );
+        throw createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
+      }
+
+      if (response.status >= 500) {
+        lastError = createAiError('AI_SERVER_ERROR', errorMessage, response.status);
+
+        if (attempt < attempts) {
+          await sleep(1000 * attempt);
+          continue;
+        }
+
+        if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
+          console.warn(
+            `Hummingbird AI switching model after server error: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          );
+          break;
+        }
+
+        throw lastError;
+      }
+
+      lastError = createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
+
+      if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
+        console.warn(
+          `Hummingbird AI switching model after request failure: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, status=${response.status}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+        );
+        break;
       }
 
       console.warn(
-        `Hummingbird AI rate limited: model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+        `Hummingbird AI request failed: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
       );
       throw lastError;
     }
-
-    if (/quota|billing|permission|api key not valid/i.test(errorMessage)) {
-      console.warn(
-        `Hummingbird AI request rejected: status=${response.status}, model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
-      );
-      throw createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
-    }
-
-    if (response.status >= 500) {
-      lastError = createAiError('AI_SERVER_ERROR', errorMessage, response.status);
-
-      if (attempt < attempts) {
-        await sleep(1000 * attempt);
-        continue;
-      }
-
-      throw lastError;
-    }
-
-    console.warn(
-      `Hummingbird AI request failed: status=${response.status}, model=${geminiModel()}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
-    );
-    throw createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
   }
 
   throw lastError || createAiError('AI_REQUEST_FAILED');
@@ -982,7 +1073,7 @@ async function testProviderConnection() {
     if (error?.name === 'AbortError') {
       error = createAiError('AI_TIMEOUT');
     } else if (error instanceof TypeError) {
-      error = createAiError('AI_NETWORK_ERROR');
+      error = createNetworkError(error);
     }
 
     return {
@@ -1039,7 +1130,7 @@ async function generateBusinessAnalysis(company) {
     }
 
     if (error instanceof TypeError) {
-      throw new Error('AI_NETWORK_ERROR');
+      throw createNetworkError(error);
     }
 
     throw error;
@@ -1090,7 +1181,7 @@ async function generateCompanyPrompts(company, analysis) {
     }
 
     if (error instanceof TypeError) {
-      throw new Error('AI_NETWORK_ERROR');
+      throw createNetworkError(error);
     }
 
     throw error;
@@ -1133,7 +1224,7 @@ async function discoverCompetitors(company, analysis) {
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
     if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
-    if (error instanceof TypeError) throw new Error('AI_NETWORK_ERROR');
+    if (error instanceof TypeError) throw createNetworkError(error);
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -1197,7 +1288,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     } catch (error) {
       if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
       if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
-      if (error instanceof TypeError) throw new Error('AI_NETWORK_ERROR');
+      if (error instanceof TypeError) throw createNetworkError(error);
       throw error;
     } finally {
       clearTimeout(timeout);
@@ -1241,7 +1332,7 @@ async function generateAeoRecommendations(context) {
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
     if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
-    if (error instanceof TypeError) throw new Error('AI_NETWORK_ERROR');
+    if (error instanceof TypeError) throw createNetworkError(error);
     throw error;
   } finally {
     clearTimeout(timeout);

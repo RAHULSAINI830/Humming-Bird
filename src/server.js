@@ -352,12 +352,19 @@ function aiErrorResponse(error, fallbackMessage) {
     AI_NETWORK_ERROR: 'Hummingbird AI could not be reached. Please retry.',
     AI_SERVER_ERROR: 'Hummingbird AI service is temporarily unavailable. Please retry.',
     AI_REQUEST_FAILED: 'Hummingbird AI request failed. Please check the AI key, model, and provider quota.',
+    OPENAI_MISSING_KEY: 'ChatGPT is not configured yet. Please add OPENAI_API_KEY in environment variables and redeploy.',
+    OPENAI_INVALID_KEY_FORMAT: 'The configured OPENAI_API_KEY does not look like an OpenAI API key. Add a real OpenAI key, not a Claude/Anthropic key.',
+    OPENAI_AUTH_FAILED: 'ChatGPT authentication failed. Please check the OpenAI API key in environment variables and redeploy.',
+    OPENAI_RATE_LIMITED: 'ChatGPT is temporarily rate-limited or out of credits. Please wait and retry, or check OpenAI billing/quota.',
+    OPENAI_TIMEOUT: 'ChatGPT took too long to respond. Please retry.',
+    OPENAI_EMPTY_RESPONSE: 'ChatGPT returned an empty response. Please retry.',
+    OPENAI_REQUEST_FAILED: 'ChatGPT request failed. Please check the OpenAI API key, model, and provider quota.',
     CLAUDE_MISSING_KEY: 'Claude is not configured yet. Please add CLAUDE_API_KEY or ANTHROPIC_API_KEY in production environment variables and redeploy.',
     CLAUDE_AUTH_FAILED: 'Claude authentication failed. Please check the Claude API key in production environment variables and redeploy.',
     CLAUDE_RATE_LIMITED: 'Claude is temporarily rate-limited or out of credits. Please wait and retry, or check Anthropic billing/quota.',
     CLAUDE_TIMEOUT: 'Claude took too long to respond. Please retry.',
     CLAUDE_EMPTY_RESPONSE: 'Claude returned an empty response. Please retry.',
-    CLAUDE_MODEL_UNAVAILABLE: 'The configured Claude model is not available. Use CLAUDE_MODEL=claude-haiku-4-5 and redeploy.',
+    CLAUDE_MODEL_UNAVAILABLE: 'The configured Claude model is not available. Use CLAUDE_MODEL=claude-haiku-4-5-20251001 and redeploy.',
     CLAUDE_REQUEST_FAILED: 'Claude request failed. Please check the Claude API key, model, and provider quota.'
   };
 
@@ -381,6 +388,13 @@ function aiErrorStatus(error) {
   if (code === 'AI_MISSING_KEY') return 503;
   if (code === 'AI_INVALID_JSON') return 503;
   if (code === 'AI_NETWORK_ERROR') return 503;
+  if (code === 'OPENAI_MISSING_KEY') return 503;
+  if (code === 'OPENAI_INVALID_KEY_FORMAT') return 401;
+  if (code === 'OPENAI_AUTH_FAILED') return 401;
+  if (code === 'OPENAI_RATE_LIMITED') return 429;
+  if (code === 'OPENAI_TIMEOUT') return 504;
+  if (code === 'OPENAI_EMPTY_RESPONSE') return 503;
+  if (code === 'OPENAI_REQUEST_FAILED') return providerStatus >= 400 ? providerStatus : 502;
   if (code === 'CLAUDE_MISSING_KEY') return 503;
   if (code === 'CLAUDE_AUTH_FAILED') return 401;
   if (code === 'CLAUDE_RATE_LIMITED') return 429;
@@ -826,6 +840,42 @@ function promptLimitError(limit) {
 
 function competitorLimitError(limit) {
   return `Competitor limit reached. This workspace can track up to ${limit} competitors. Contact your administrator to increase the limit.`;
+}
+
+function shouldBootstrapAllConfiguredProviders(companyId, prompts = []) {
+  if (!prompts.length) return false;
+
+  const configuredPaidProviderFields = [
+    ['openai', 'chatgpt_response_summary'],
+    ['claude', 'claude_response_summary'],
+    ['perplexity', 'perplexity_response_summary']
+  ].filter(([providerName]) => {
+    if (providerName === 'openai') return Boolean(process.env.OPENAI_API_KEY);
+    if (providerName === 'claude') return Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
+    if (providerName === 'perplexity') return Boolean(process.env.PERPLEXITY_API_KEY);
+    return false;
+  });
+
+  const summary = promptSummary(prompts);
+  const hasSavedChecks = summary.checked > 0;
+  const hasVisibilityRuns = listPromptVisibilityRuns(companyId, 1).length > 0;
+
+  if (!hasSavedChecks && !hasVisibilityRuns) {
+    return true;
+  }
+
+  if (!configuredPaidProviderFields.length) {
+    return false;
+  }
+
+  const hasAnyPaidProviderResponse = prompts.some((prompt) =>
+    configuredPaidProviderFields.some(([, fieldName]) => {
+      const value = String(prompt[fieldName] || '').trim();
+      return value && value.toUpperCase() !== 'NA';
+    })
+  );
+
+  return !hasAnyPaidProviderResponse;
 }
 
 function logProviderUsageFromResults(companyId, runId, results) {
@@ -1279,10 +1329,8 @@ function setupPipelineStatus(companyId) {
     }
   ];
 
-  const requiredSteps = steps.filter((step) => ['analysis', 'competitors', 'prompts'].includes(step.key));
-
   return {
-    ready: requiredSteps.every((step) => step.complete),
+    ready: steps.every((step) => step.complete),
     steps,
     limits: companyLimitPayload(companyId),
     counts: {
@@ -2596,9 +2644,11 @@ async function handleSetupRunChecks(req, res) {
 
   try {
     const providerControls = getCompanyAiProviderControls(companyId);
+    const initialProviderBootstrap = shouldBootstrapAllConfiguredProviders(companyId, prompts);
     const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
       providerControls,
-      refreshType: 'manual'
+      refreshType: 'manual',
+      initialProviderBootstrap
     });
     const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'setup-check',
@@ -2894,9 +2944,11 @@ async function handleGenerateSetup(req, res) {
 
     if (prompts.length && summary.checked === 0) {
       const providerControls = getCompanyAiProviderControls(companyId);
+      const initialProviderBootstrap = shouldBootstrapAllConfiguredProviders(companyId, prompts);
       const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
         providerControls,
-        refreshType: 'manual'
+        refreshType: 'manual',
+        initialProviderBootstrap
       });
       const run = updatePromptVisibility(companyId, visibilityResults, {
         runType: 'setup-check',
@@ -3264,9 +3316,11 @@ async function handleSettingsRefreshVisibility(req, res) {
 
   try {
     const providerControls = getCompanyAiProviderControls(companyId);
+    const initialProviderBootstrap = shouldBootstrapAllConfiguredProviders(companyId, prompts);
     const { visibilityResults, failedBatches } = await analyzePromptVisibilitySafely(context, prompts, competitors, analysis, {
       providerControls,
-      refreshType: 'manual'
+      refreshType: 'manual',
+      initialProviderBootstrap
     });
 
     if (!visibilityResults.length) {

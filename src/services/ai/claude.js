@@ -1,13 +1,16 @@
 function claudeModel() {
-  const rawModel = String(process.env.CLAUDE_MODEL || 'claude-haiku-4-5').trim();
+  const rawModel = String(process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001').trim();
   const model = rawModel.replace(/^CLAUDE_MODEL=/i, '').trim();
   const aliases = {
-    'claude-3-5-haiku-latest': 'claude-haiku-4-5',
-    'claude-3.5-haiku-latest': 'claude-haiku-4-5',
-    'claude-3-haiku-latest': 'claude-haiku-4-5'
+    'claude-haiku-4-5': 'claude-haiku-4-5-20251001',
+    'claude-3-5-haiku-latest': 'claude-haiku-4-5-20251001',
+    'claude-3.5-haiku-latest': 'claude-haiku-4-5-20251001',
+    'claude-3-5-haiku-20241022': 'claude-haiku-4-5-20251001',
+    'claude-3-haiku-latest': 'claude-haiku-4-5-20251001',
+    'claude-3-haiku-20240307': 'claude-haiku-4-5-20251001'
   };
 
-  return aliases[model] || model || 'claude-haiku-4-5';
+  return aliases[model] || model || 'claude-haiku-4-5-20251001';
 }
 
 function claudeTimeout() {
@@ -27,6 +30,10 @@ function claudeKeyEnding() {
 
 function claudeApiKey() {
   return process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+}
+
+function claudeKeyLooksValid() {
+  return /^sk-ant-api[0-9]{2}-/.test(String(claudeApiKey() || '').trim());
 }
 
 function brandAliasesFor(company) {
@@ -232,6 +239,7 @@ function getProviderDiagnostics() {
     provider: 'Claude',
     model: claudeModel(),
     hasApiKey: Boolean(claudeApiKey()),
+    keyLooksValid: claudeKeyLooksValid(),
     keyEnding: claudeKeyEnding(),
     timeoutMs: claudeTimeout(),
     maxTokens: claudeMaxTokens()
