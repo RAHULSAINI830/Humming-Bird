@@ -868,14 +868,14 @@ function shouldBootstrapAllConfiguredProviders(companyId, prompts = []) {
     return false;
   }
 
-  const hasAnyPaidProviderResponse = prompts.some((prompt) =>
-    configuredPaidProviderFields.some(([, fieldName]) => {
+  const hasEveryConfiguredPaidProviderResponse = configuredPaidProviderFields.every(([, fieldName]) =>
+    prompts.some((prompt) => {
       const value = String(prompt[fieldName] || '').trim();
       return value && value.toUpperCase() !== 'NA';
     })
   );
 
-  return !hasAnyPaidProviderResponse;
+  return !hasEveryConfiguredPaidProviderResponse;
 }
 
 function logProviderUsageFromResults(companyId, runId, results) {
@@ -1776,7 +1776,7 @@ function expectedCtrForPosition(position) {
 function geoDashboardPayload(companyId) {
   const connection = getGoogleConnection(companyId);
   const properties = listSearchConsoleProperties(companyId);
-  const selected = getSelectedSearchConsoleProperty(companyId) || properties[0] || null;
+  const selected = getSelectedSearchConsoleProperty(companyId) || null;
   const isConnected = Boolean(connection && connection.status === 'connected');
   const propertyUrl = selected?.site_url || '';
   const countryRows = isConnected ? latestCreatedRows(listGeoCountrySnapshots(companyId, propertyUrl)) : [];
@@ -1785,6 +1785,7 @@ function geoDashboardPayload(companyId) {
   const pageRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page')) : [];
   const deviceRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'device')) : [];
   const searchAppearanceRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'searchAppearance')) : [];
+  const queryDetailRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'queryDetail')) : [];
   const previousQueryRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'query', 'previous')) : [];
   const previousPageRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'page', 'previous')) : [];
   const previousDateRows = isConnected ? latestCreatedRows(listGeoDimensionSnapshots(companyId, propertyUrl, 'date', 'previous')) : [];
@@ -1899,9 +1900,17 @@ function geoDashboardPayload(companyId) {
         pages: pageRows.length,
         devices: deviceRows.length,
         searchAppearance: searchAppearanceRows.length,
+        queryDetails: queryDetailRows.length,
         previousQueries: previousQueryRows.length,
         previousPages: previousPageRows.length,
         previousDates: previousDateRows.length
+      },
+      queryRowsSuppressed: Boolean(isConnected && propertyUrl && !queryRows.length && (countryRows.length || dateRows.length || pageRows.length)),
+      missingDataReasons: {
+        queries: !queryRows.length && (countryRows.length || dateRows.length || pageRows.length)
+          ? 'Google Search Console can suppress query rows for privacy or low-volume data. Hummingbird syncs query-only rows first to reduce this, but Google may still return zero.'
+          : '',
+        technical: 'Index coverage, URL inspection, crawl stats, mobile usability, and Core Web Vitals require additional Google APIs beyond Search Analytics.'
       }
     },
     kpis: {
@@ -2146,6 +2155,7 @@ async function syncGeoForCompany(companyId) {
   const [
     countryRows,
     queryRows,
+    queryDetailRows,
     dateRows,
     pageRows,
     deviceRows,
@@ -2160,8 +2170,12 @@ async function syncGeoForCompany(companyId) {
     }),
     optionalSearchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
+      dimensions: ['query']
+    }, 'query'),
+    optionalSearchConsoleQuery(accessToken, selected.site_url, {
+      ...commonBody,
       dimensions: ['query', 'country', 'page']
-    }, 'query-country-page'),
+    }, 'query-country-page-detail'),
     searchConsoleQuery(accessToken, selected.site_url, {
       ...commonBody,
       dimensions: ['date'],
@@ -2217,8 +2231,8 @@ async function syncGeoForCompany(companyId) {
     })),
     queryRows: queryRows.map((row) => ({
       query: row.keys?.[0] || '',
-      country: row.keys?.[1] || '',
-      page: row.keys?.[2] || '',
+      country: '',
+      page: '',
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
@@ -2229,7 +2243,7 @@ async function syncGeoForCompany(companyId) {
       ...pageRows.map((row) => dimensionRow('page', row)),
       ...deviceRows.map((row) => dimensionRow('device', row)),
       ...searchAppearanceRows.map((row) => dimensionRow('searchAppearance', row)),
-      ...queryRows.map((row) => dimensionRow('queryDetail', row))
+      ...queryDetailRows.map((row) => dimensionRow('queryDetail', row))
     ]
   });
 
@@ -2251,8 +2265,10 @@ async function syncGeoForCompany(companyId) {
   return {
     skipped: false,
     propertyUrl: selected.site_url,
+    hasCurrentRows: Boolean(countryRows.length || queryRows.length || dateRows.length || pageRows.length || deviceRows.length || searchAppearanceRows.length),
     countryRows: countryRows.length,
     queryRows: queryRows.length,
+    queryDetailRows: queryDetailRows.length,
     dateRows: dateRows.length,
     pageRows: pageRows.length,
     deviceRows: deviceRows.length,
@@ -3098,7 +3114,7 @@ async function handleGenerateAeoRecommendations(req, res) {
     const recommendation = await AIService.generateAeoRecommendations(
       buildAeoRecommendationContext(context.access, analysis, prompts, competitors, visibilitySummary)
     );
-    createAeoRecommendation(companyId, recommendation, 'gemini');
+    createAeoRecommendation(companyId, recommendation, 'claude');
 
     return handleAeoRecommendations(req, res);
   } catch (error) {

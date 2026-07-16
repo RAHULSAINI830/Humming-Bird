@@ -205,7 +205,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
 }
 
 async function generateAeoRecommendations(context) {
-  return GeminiProvider.generateAeoRecommendations(context);
+  return ClaudeProvider.generateAeoRecommendations(context);
 }
 
 function getProviderDiagnostics() {

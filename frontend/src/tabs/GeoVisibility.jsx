@@ -12,7 +12,6 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   const [queryFilter, setQueryFilter] = useState('all');
   const [performanceRange, setPerformanceRange] = useState('28d');
   const [visibleMetrics, setVisibleMetrics] = useState(['clicks', 'impressions']);
-  const [showFilterPanel, setShowFilterPanel] = useState(false);
   const countries = data?.countries || [];
   const queries = data?.queries || [];
   const pages = data?.pages || [];
@@ -28,6 +27,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   const diagnostics = data?.diagnostics || {};
   const canManage = Boolean(data?.canManage);
   const hasLockedProperty = Boolean(data?.selectedProperty?.site_url);
+  const needsPropertySelection = Boolean(data?.connected && canManage && !hasLockedProperty);
   const sortedCountries = [...countries].sort((a, b) => Number(b.impressions || 0) - Number(a.impressions || 0));
   const activeCountry = sortedCountries.find((country) => normalizedCountryCode(country.country) === selectedCountry) || sortedCountries[0] || null;
   const focusedCountryCode = mapMode === 'country' ? normalizedCountryCode(activeCountry?.country) : '';
@@ -42,7 +42,12 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
     try {
       const result = await api('/api/geo/sync', { method: 'POST', body: '{}' });
       onChange(result);
-      setMessage('Search Console data refreshed. Old saved rows for this property were replaced.');
+      if (result.syncResult?.hasCurrentRows) {
+        const rows = Number(result.syncResult.dateRows || 0) + Number(result.syncResult.countryRows || 0) + Number(result.syncResult.queryRows || 0);
+        setMessage(`Search Console data refreshed. Synced ${rows.toLocaleString()} saved rows for this property.`);
+      } else {
+        setMessage('Search Console refreshed, but Google returned no current rows for this property/date range yet.');
+      }
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -85,13 +90,21 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   async function selectProperty(event) {
     setLoading('property');
     setMessage('');
+    const propertyUrl = typeof event === 'string' ? event : event?.target?.value;
     try {
       const result = await api('/api/geo/select-property', {
         method: 'POST',
-        body: JSON.stringify({ propertyUrl: event.target.value })
+        body: JSON.stringify({ propertyUrl })
       });
       onChange(result);
-      setMessage(result.syncError?.error || 'Search Console property selected and data sync started.');
+      if (result.syncError?.error) {
+        setMessage(result.syncError.error);
+      } else if (result.syncResult && !result.syncResult.skipped) {
+        const rows = Number(result.syncResult.dateRows || 0) + Number(result.syncResult.countryRows || 0) + Number(result.syncResult.queryRows || 0);
+        setMessage(result.syncResult.hasCurrentRows && rows ? `Search Console property selected. Synced ${rows.toLocaleString()} saved rows.` : 'Property selected, but Google Search Console returned no current rows for this property/date range yet.');
+      } else {
+        setMessage('Search Console property selected.');
+      }
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -139,13 +152,23 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
         </article>
       ) : null}
 
+      {needsPropertySelection ? (
+        <GeoPropertySelectionModal properties={properties} loading={loading === 'property'} onSelect={selectProperty} />
+      ) : null}
+
       {data?.connected ? (
         <>
-          <article className="geo-toolbar">
+          <article className={`geo-toolbar ${!hasLockedProperty ? 'needs-selection' : ''}`}>
             <div>
               <p className="eyebrow">Connected account</p>
               <h2>{data.connection?.google_email || 'Google account connected'}</h2>
-              <p>{summary.lastSyncedAt ? `Last refreshed on ${summary.lastSyncedAt}` : 'No Search Console refresh has been saved yet.'}</p>
+              <p>
+                {hasLockedProperty
+                  ? summary.lastSyncedAt
+                    ? `Last refreshed on ${summary.lastSyncedAt}`
+                    : 'Property selected. Click Refresh Search Console to pull the latest saved rows.'
+                  : 'Choose which Search Console property belongs to this workspace before Hummingbird syncs data.'}
+              </p>
               {data?.connected ? (
                 <div className="geo-sync-diagnostics">
                   <span>{diagnostics.propertyCount || 0} properties</span>
@@ -159,7 +182,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
               <div className="geo-locked-property">
                 <span>{hasLockedProperty ? 'Tracking property' : 'Property selection required'}</span>
                 <strong>{data.selectedProperty?.site_url || 'No property selected yet'}</strong>
-                <small>{hasLockedProperty ? 'Locked for this workspace. Disconnect to choose a different property.' : 'Choose one property below to start syncing real Search Console data.'}</small>
+                <small>{hasLockedProperty ? 'Locked for this workspace. Disconnect to choose a different property.' : 'A popup is open. Select the website data you want this workspace to show.'}</small>
               </div>
               {canManage ? (
                 <>
@@ -176,8 +199,10 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
 
           {message ? <div className={message.includes('refreshed') || message.includes('disconnected') || message.includes('cleared') || message.includes('selected') ? 'success-notice' : 'notice'}>{message}</div> : null}
 
+          {hasLockedProperty ? <GeoDataCoverageStrip diagnostics={diagnostics} /> : null}
+
           {data?.connected && canManage && !hasLockedProperty ? (
-            <article className="geo-property-picker-card">
+            <article className="geo-property-picker-card inline-picker">
               <div>
                 <p className="eyebrow">Choose Search Console property</p>
                 <h2>Select the website property to track</h2>
@@ -188,7 +213,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
                   <button
                     type="button"
                     key={property.site_url}
-                    onClick={() => selectProperty({ target: { value: property.site_url } })}
+                    onClick={() => selectProperty(property.site_url)}
                     disabled={loading === 'property'}
                   >
                     <span>{property.site_url}</span>
@@ -200,7 +225,22 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
             </article>
           ) : null}
 
-          {geoTab === 'performance' ? (
+          {data?.connected && hasLockedProperty && !summary.lastSyncedAt ? (
+            <article className="geo-data-empty-card">
+              <div>
+                <p className="eyebrow">No saved GEO rows yet</p>
+                <h2>Connection is ready, but data has not appeared yet</h2>
+                <p>Click Refresh Search Console to pull country, query, page, device, and daily performance rows for the selected property.</p>
+              </div>
+              {canManage ? (
+                <button type="button" className="primary-button" onClick={syncGeo} disabled={loading === 'sync'}>
+                  {loading === 'sync' ? 'Refreshing Search Console…' : 'Refresh Search Console now'}
+                </button>
+              ) : null}
+            </article>
+          ) : null}
+
+          {geoTab === 'performance' && hasLockedProperty ? (
             <>
               <GeoPerformanceOverview
                 rows={filteredPerformanceRows}
@@ -214,14 +254,12 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
                   if (current.includes(metric) && current.length === 1) return current;
                   return current.includes(metric) ? current.filter((item) => item !== metric) : [...current, metric];
                 })}
-                showFilterPanel={showFilterPanel}
-                onToggleFilterPanel={() => setShowFilterPanel((current) => !current)}
               />
               <GeoKpiDeck kpis={computedPerformance.kpis} comparison={computedPerformance.comparison} dateRange={summary.dateRange} compact />
             </>
           ) : null}
 
-          {geoTab === 'queries' ? (
+          {geoTab === 'queries' && hasLockedProperty ? (
             <>
               <GeoOpportunitySections opportunities={opportunities} />
               <DashboardPanel title="Query analysis" action={`${filteredQueries.length} queries`}>
@@ -231,8 +269,8 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
             </>
           ) : null}
 
-          {geoTab === 'pages' ? (
-            <div className="dashboard-table-grid">
+          {geoTab === 'pages' && hasLockedProperty ? (
+            <div className="dashboard-table-grid geo-pages-grid">
               <DashboardPanel title="Page performance" action={`${pages.length} URLs`}>
                 <GeoPageTable rows={pages} />
               </DashboardPanel>
@@ -242,13 +280,13 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
             </div>
           ) : null}
 
-          {geoTab === 'countries' ? (
+          {geoTab === 'countries' && hasLockedProperty ? (
             <>
               <article className="geo-map-card">
                 <div className="dashboard-panel-head">
                   <div>
                     <h2>Geographic heat map</h2>
-                    <p>{countries.length ? 'Interactive OpenStreetMap view from saved Search Console country rows.' : 'Connect and refresh Search Console to populate the map.'}</p>
+                    <p>{countries.length ? 'Interactive map view from saved Search Console country rows.' : 'Connect and refresh Search Console to populate the map.'}</p>
                   </div>
                   <div className="geo-map-controls">
                     <div className="geo-mode-toggle">
@@ -280,15 +318,10 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
             </>
           ) : null}
 
-          {geoTab === 'technical' ? (
-            <div className="dashboard-table-grid">
-              <DashboardPanel title="Device analytics" action="Desktop · Mobile · Tablet">
-                <GeoDeviceTable rows={devices} />
-              </DashboardPanel>
-              <DashboardPanel title="Additional SEO data sources" action="Not mocked">
-                <GeoUnsupportedMetrics items={data.unsupportedMetrics || []} />
-              </DashboardPanel>
-            </div>
+          {geoTab === 'technical' && hasLockedProperty ? (
+            <DashboardPanel title="Device analytics" action="Desktop · Mobile · Tablet">
+              <GeoDeviceTable rows={devices} />
+            </DashboardPanel>
           ) : null}
         </>
       ) : null}
@@ -296,8 +329,52 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
   );
 }
 
+function GeoPropertySelectionModal({ properties, loading, onSelect }) {
+  return (
+    <div className="geo-property-modal-backdrop" role="presentation">
+      <section className="geo-property-modal" role="dialog" aria-modal="true" aria-labelledby="geo-property-title">
+        <div className="geo-property-modal-visual" aria-hidden="true">
+          <span />
+          <i />
+          <i />
+        </div>
+        <div className="geo-property-modal-copy">
+          <p className="eyebrow">Search Console connected</p>
+          <h2 id="geo-property-title">Which website data should this workspace show?</h2>
+          <p>
+            Pick the verified Search Console property for this company. Hummingbird will lock this workspace to that
+            property, sync real Google Search Console rows, and keep the data separated from every other company.
+          </p>
+        </div>
+        <div className="geo-property-modal-list">
+          {properties.map((property) => (
+            <button type="button" key={property.site_url} onClick={() => onSelect(property.site_url)} disabled={loading}>
+              <span>
+                <strong>{property.site_url}</strong>
+                <small>{property.permission_level || 'Search Console property'}</small>
+              </span>
+              <em>{loading ? 'Syncing…' : 'Use this data'}</em>
+            </button>
+          ))}
+          {!properties.length ? (
+            <DashboardEmptyBlock
+              title="No properties found"
+              text="This Google account connected successfully, but it does not expose any Search Console properties."
+            />
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function numberFmt(value) {
   if (value === null || value === undefined || value === '') return 'Not connected';
+  return Number(value || 0).toLocaleString();
+}
+
+function unavailableFmt(value, label = 'Needs API') {
+  if (value === null || value === undefined || value === '') return label;
   return Number(value || 0).toLocaleString();
 }
 
@@ -373,23 +450,37 @@ function computedPerformanceStats(rows, previousRows, fallbackKpis = {}, fallbac
   };
 }
 
+function GeoDataCoverageStrip({ diagnostics }) {
+  const saved = diagnostics?.savedRows || {};
+  const items = [
+    ['Performance', saved.dates || 0, 'Daily rows'],
+    ['Countries', saved.countries || 0, 'Country rows'],
+    ['Pages', saved.pages || 0, 'Page rows'],
+    ['Queries', saved.queries || 0, diagnostics?.queryRowsSuppressed ? 'Hidden by Google privacy / low volume' : 'Query rows'],
+    ['Devices', saved.devices || 0, 'Device rows']
+  ];
+
+  return (
+    <div className="geo-coverage-strip">
+      {items.map(([label, count, helper]) => (
+        <div className={!count ? 'is-empty' : ''} key={label}>
+          <span>{label}</span>
+          <strong>{Number(count || 0).toLocaleString()}</strong>
+          <small>{helper}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GeoKpiDeck({ kpis, comparison, dateRange, compact = false }) {
   const cards = [
     ['Total Clicks', numberFmt(kpis.totalClicks), comparisonFmt(comparison.clicks), 'Google Search Console'],
     ['Total Impressions', numberFmt(kpis.totalImpressions), comparisonFmt(comparison.impressions), 'Google Search Console'],
     ['Average CTR', percentFmt(kpis.averageCtr), comparisonFmt(comparison.ctr), 'Clicks / impressions'],
     ['Average Position', positionFmt(kpis.averagePosition), comparisonFmt(comparison.position), 'Lower is better'],
-    ['Indexed Pages', numberFmt(kpis.indexedPages), null, 'Requires URL Inspection'],
-    ['Valid Pages', numberFmt(kpis.validPages), null, 'Requires indexing source'],
-    ['Crawled Pages', numberFmt(kpis.crawledPages), null, 'Requires crawl stats'],
-    ['Not Indexed Pages', numberFmt(kpis.notIndexedPages), null, 'Requires index coverage'],
-    ['Search Traffic Value', numberFmt(kpis.searchTrafficValue), null, 'Optional CPC provider'],
-    ['New Pages Indexed', numberFmt(kpis.newPagesIndexed), null, 'Requires index history'],
-    ['Lost Indexed Pages', numberFmt(kpis.lostIndexedPages), null, 'Requires index history'],
     ['Search Queries', numberFmt(kpis.searchQueries), null, 'Synced queries'],
     ['Ranking Keywords', numberFmt(kpis.rankingKeywords), null, 'Queries with impressions'],
-    ['Mobile Usability Issues', numberFmt(kpis.mobileUsabilityIssues), null, 'Requires mobile API'],
-    ['Core Web Vitals', kpis.coreWebVitalsStatus || 'Not connected', null, 'Requires PageSpeed/CrUX'],
     ['SEO Health Score', kpis.seoScore !== undefined ? `${kpis.seoScore}/100` : 'NA', null, dateRange ? `${dateRange.startDate} → ${dateRange.endDate}` : 'Awaiting sync']
   ];
 
@@ -417,10 +508,10 @@ const PERFORMANCE_RANGE_OPTIONS = [
 ];
 
 const PERFORMANCE_METRICS = {
-  clicks: { label: 'Total clicks', shortLabel: 'Clicks', color: '#3b82f6', valueKey: 'totalClicks', formatter: numberFmt },
-  impressions: { label: 'Total impressions', shortLabel: 'Impressions', color: '#673ab7', valueKey: 'totalImpressions', formatter: numberFmt },
-  ctr: { label: 'Average CTR', shortLabel: 'CTR', color: '#f97316', valueKey: 'averageCtr', formatter: percentFmt },
-  position: { label: 'Average position', shortLabel: 'Position', color: '#0f766e', valueKey: 'averagePosition', formatter: positionFmt, inverse: true }
+  clicks: { label: 'Total clicks', shortLabel: 'Clicks', color: '#2563eb', valueKey: 'totalClicks', formatter: numberFmt, chart: 'bar' },
+  impressions: { label: 'Total impressions', shortLabel: 'Impressions', color: '#000142', valueKey: 'totalImpressions', formatter: numberFmt, chart: 'bar' },
+  ctr: { label: 'Average CTR', shortLabel: 'CTR', color: '#ff8500', valueKey: 'averageCtr', formatter: percentFmt, chart: 'line' },
+  position: { label: 'Average position', shortLabel: 'Position', color: '#0f766e', valueKey: 'averagePosition', formatter: positionFmt, inverse: true, chart: 'line' }
 };
 
 function GeoPerformanceOverview({
@@ -431,9 +522,7 @@ function GeoPerformanceOverview({
   range,
   onRangeChange,
   visibleMetrics,
-  onToggleMetric,
-  showFilterPanel,
-  onToggleFilterPanel
+  onToggleMetric
 }) {
   const activeRange = PERFORMANCE_RANGE_OPTIONS.find(([key]) => key === range);
   const savedDays = rows?.length || 0;
@@ -451,20 +540,9 @@ function GeoPerformanceOverview({
         </div>
         <div className="gsc-chip-group">
           <button type="button" className="active" title="Current Search Console sync uses Web search rows. Image, video, news, and discover can be added in the backend later.">Search type: Web⌄</button>
-          <button type="button" className={showFilterPanel ? 'active' : ''} onClick={onToggleFilterPanel}>＋ Add filter</button>
         </div>
         <span>{summary?.lastSyncedAt ? `Last update: ${summary.lastSyncedAt}` : 'Awaiting first refresh'}</span>
       </div>
-
-      {showFilterPanel ? (
-        <div className="gsc-filter-note">
-          <SettingsIcon name="clipboard" />
-          <div>
-            <strong>Real data filters</strong>
-            <p>Current saved Search Console rows include Web search performance. Country, query, page, device, and appearance filters are available in their GEO child tabs. More search types need a new sync with that Search Console parameter.</p>
-          </div>
-        </div>
-      ) : null}
 
       <div className="gsc-metric-row">
         {Object.entries(PERFORMANCE_METRICS).map(([key, metric]) => (
@@ -492,7 +570,7 @@ function GeoPerformanceOverview({
 
 function GscMetricCard({ label, value, change, active = false, color, onClick }) {
   return (
-    <button type="button" className={`gsc-metric-card ${active ? 'active' : ''}`} style={{ '--metric-color': color }} onClick={onClick}>
+    <button type="button" className={`gsc-metric-card ${active ? 'active' : ''}`} style={{ '--metric-color': color, backgroundColor: active ? color : undefined }} onClick={onClick}>
       <span>{active ? '☑' : '☐'} {label}</span>
       <strong>{value}</strong>
       {change ? <small>{change}</small> : <small>Compared to previous period</small>}
@@ -501,99 +579,126 @@ function GscMetricCard({ label, value, change, active = false, color, onClick })
 }
 
 function GeoPerformanceChart({ rows, visibleMetrics }) {
-  const [hoverIndex, setHoverIndex] = useState(null);
   if (!rows?.length) return <DashboardEmptyBlock title="No performance trend yet" text="Sync Search Console to save daily clicks, impressions, CTR, and position." />;
-  const width = 960;
-  const height = 390;
-  const plot = { left: 54, right: 28, top: 34, bottom: 48 };
-  const innerWidth = width - plot.left - plot.right;
-  const innerHeight = height - plot.top - plot.bottom;
   const activeMetrics = visibleMetrics.length ? visibleMetrics : ['clicks'];
-  const xFor = (index) => rows.length === 1 ? plot.left + innerWidth / 2 : plot.left + (index / (rows.length - 1)) * innerWidth;
-  const valueFor = (row, key) => {
-    if (key === 'ctr') return Number(row.ctr || 0) * 100;
-    return Number(row[key] || 0);
-  };
-  const domainFor = (key) => {
-    const values = rows.map((row) => valueFor(row, key));
-    const max = Math.max(...values, 0);
-    const min = Math.min(...values, 0);
-    if (max === min) return { min: 0, max: max || 1 };
-    return { min, max };
-  };
-  const yFor = (row, key) => {
-    const metric = PERFORMANCE_METRICS[key];
-    const { min, max } = domainFor(key);
-    const value = valueFor(row, key);
-    const ratio = (value - min) / (max - min || 1);
-    const adjusted = metric.inverse ? ratio : ratio;
-    return plot.top + innerHeight - adjusted * innerHeight;
-  };
-  const pathFor = (key) => rows.map((row, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(2)} ${yFor(row, key).toFixed(2)}`).join(' ');
-  const hoverRow = hoverIndex === null ? null : rows[hoverIndex];
-  const hoverX = hoverIndex === null ? 0 : xFor(hoverIndex);
-  const yTicks = [0, 1, 2, 3, 4];
-  const labelStep = Math.max(1, Math.ceil(rows.length / 8));
 
   return (
     <div className="geo-chart-wrap gsc-chart clean">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Search performance trend">
-        <defs>
-          <linearGradient id="geoChartFade" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#fff7ed" />
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <rect x={plot.left} y={plot.top} width={innerWidth} height={innerHeight} fill="url(#geoChartFade)" rx="16" />
-        {yTicks.map((line) => {
-          const y = plot.top + line * (innerHeight / 4);
-          return <path key={line} d={`M${plot.left} ${y}H${width - plot.right}`} className="geo-chart-grid" />;
-        })}
-        <path d={`M${plot.left} ${plot.top}V${height - plot.bottom}H${width - plot.right}`} className="geo-chart-axis" />
-        {activeMetrics.map((key) => (
-          <path key={key} d={pathFor(key)} fill="none" stroke={PERFORMANCE_METRICS[key].color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <div className="geo-metric-chart-grid">
+        {activeMetrics.map((metricKey) => (
+          <GeoMetricChartCard key={metricKey} metricKey={metricKey} rows={rows} />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function GeoMetricChartCard({ metricKey, rows }) {
+  const [hoverIndex, setHoverIndex] = useState(null);
+  const metric = PERFORMANCE_METRICS[metricKey];
+  const width = 420;
+  const height = 188;
+  const plot = { left: 64, right: 18, top: 18, bottom: 34 };
+  const innerWidth = width - plot.left - plot.right;
+  const innerHeight = height - plot.top - plot.bottom;
+  const valueFor = (row) => {
+    if (metricKey === 'ctr') return Number(row.ctr || 0) * 100;
+    return Number(row[metricKey] || 0);
+  };
+  const values = rows.map(valueFor);
+  const max = Math.max(...values, 0);
+  const domainMax = max > 0 ? max * 1.16 : 1;
+  const xFor = (index) => rows.length === 1 ? plot.left + innerWidth / 2 : plot.left + (index / (rows.length - 1)) * innerWidth;
+  const yFor = (value) => plot.top + innerHeight - (value / domainMax) * innerHeight;
+  const formatter = (value) => {
+    if (metricKey === 'ctr') return `${Number(value).toFixed(value >= 10 ? 0 : 1)}%`;
+    if (metricKey === 'position') return positionFmt(value);
+    return numberFmt(Math.round(value));
+  };
+  const smoothPath = values.map((value, index) => [xFor(index), yFor(value)]).reduce((path, point, index, points) => {
+    if (index === 0) return `M ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+    const previous = points[index - 1];
+    const controlX = (previous[0] + point[0]) / 2;
+    return `${path} C ${controlX.toFixed(2)} ${previous[1].toFixed(2)}, ${controlX.toFixed(2)} ${point[1].toFixed(2)}, ${point[0].toFixed(2)} ${point[1].toFixed(2)}`;
+  }, '');
+  const hoverRow = hoverIndex === null ? null : rows[hoverIndex];
+  const latest = rows.at(-1);
+  const previous = rows.at(-2);
+  const latestValue = latest ? valueFor(latest) : 0;
+  const previousValue = previous ? valueFor(previous) : 0;
+  const change = latestValue - previousValue;
+  const labelStep = Math.max(1, Math.ceil(rows.length / 4));
+  const barWidth = Math.max(5, Math.min(12, innerWidth / Math.max(rows.length, 1) * 0.48));
+
+  return (
+    <article className="geo-metric-chart-card" style={{ '--metric-color': metric.color }}>
+      <div className="geo-metric-chart-head">
+        <div>
+          <span>{metric.shortLabel}</span>
+          <strong>{metric.formatter(metricKey === 'ctr' ? Number(latest?.ctr || 0) : Number(latest?.[metricKey] || 0))}</strong>
+        </div>
+        <em className={change >= 0 ? 'positive' : 'negative'}>{change >= 0 ? '↑' : '↓'} {formatter(Math.abs(change))}</em>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${metric.shortLabel} trend`}>
+        {[0, 0.5, 1].map((ratio) => {
+          const y = plot.top + (1 - ratio) * innerHeight;
+          return (
+            <g key={ratio}>
+              <path d={`M${plot.left} ${y}H${width - plot.right}`} className="geo-chart-grid" />
+              <text x={plot.left - 10} y={y + 4} className="geo-chart-axis-label">{formatter(domainMax * ratio)}</text>
+            </g>
+          );
+        })}
+        {metric.chart === 'bar' ? rows.map((row, index) => {
+          const value = valueFor(row);
+          const x = xFor(index) - barWidth / 2;
+          const y = yFor(value);
+          return (
+            <rect
+              key={`${metricKey}-${row.date || index}`}
+              x={x}
+              y={y}
+              width={barWidth}
+              height={Math.max(2, plot.top + innerHeight - y)}
+              rx="6"
+              fill="var(--metric-color)"
+              opacity={hoverIndex === index ? '0.92' : '0.36'}
+            />
+          );
+        }) : (
+          <path d={smoothPath} fill="none" stroke="var(--metric-color)" strokeWidth="4.2" strokeLinecap="round" strokeLinejoin="round" />
+        )}
         {rows.map((row, index) => {
           const x = xFor(index);
           return (
-            <g key={row.date || index}>
+            <g key={`${metricKey}-hit-${row.date || index}`}>
               <rect
-                x={x - Math.max(6, innerWidth / rows.length / 2)}
+                x={x - Math.max(7, innerWidth / rows.length / 2)}
                 y={plot.top}
-                width={Math.max(12, innerWidth / rows.length)}
+                width={Math.max(14, innerWidth / rows.length)}
                 height={innerHeight}
                 fill="transparent"
                 onMouseEnter={() => setHoverIndex(index)}
                 onMouseLeave={() => setHoverIndex(null)}
               />
-              {index % labelStep === 0 ? <text x={x} y={height - 14}>{row.date?.slice(5) || row.date}</text> : null}
+              {index % labelStep === 0 ? <text x={x} y={height - 10}>{row.date?.slice(5) || row.date}</text> : null}
             </g>
           );
         })}
         {hoverRow ? (
           <g>
-            <path d={`M${hoverX} ${plot.top}V${height - plot.bottom}`} className="geo-chart-hover-line" />
-            {activeMetrics.map((key) => <circle key={key} cx={hoverX} cy={yFor(hoverRow, key)} r="5" fill={PERFORMANCE_METRICS[key].color} stroke="#fff" strokeWidth="2" />)}
+            <path d={`M${xFor(hoverIndex)} ${plot.top}V${plot.top + innerHeight}`} className="geo-chart-hover-line" />
+            <circle cx={xFor(hoverIndex)} cy={yFor(valueFor(hoverRow))} r="5" fill="var(--metric-color)" stroke="#fff" strokeWidth="2.5" />
           </g>
         ) : null}
       </svg>
       {hoverRow ? (
-        <div className="geo-chart-tooltip">
+        <div className="geo-mini-tooltip">
           <strong>{hoverRow.date}</strong>
-          {activeMetrics.map((key) => (
-            <span key={key}>
-              <i style={{ background: PERFORMANCE_METRICS[key].color }} />
-              {PERFORMANCE_METRICS[key].shortLabel}: {key === 'ctr' ? percentFmt(hoverRow.ctr) : key === 'position' ? positionFmt(hoverRow.position) : numberFmt(hoverRow[key])}
-            </span>
-          ))}
+          <span>{metric.shortLabel}: {metric.formatter(metricKey === 'ctr' ? Number(hoverRow.ctr || 0) : Number(hoverRow[metricKey] || 0))}</span>
         </div>
       ) : null}
-      <div className="geo-chart-legend">
-        {activeMetrics.map((key) => <span key={key}><i style={{ background: PERFORMANCE_METRICS[key].color }} />{PERFORMANCE_METRICS[key].shortLabel}</span>)}
-        <span>Latest CTR {percentFmt(rows.at(-1)?.ctr)}</span>
-        <span>Latest position {positionFmt(rows.at(-1)?.position)}</span>
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -656,7 +761,7 @@ function GeoOpportunitySections({ opportunities }) {
 }
 
 function GeoMiniOpportunityTable({ rows, type }) {
-  if (!rows?.length) return <DashboardEmptyBlock title="No rows yet" text="Sync Search Console and compare periods to fill this section." />;
+  if (!rows?.length) return <DashboardEmptyBlock title="No query rows yet" text="Google Search Console has not returned current query rows for this property. This can happen with low-volume or privacy-filtered keyword data." />;
   return (
     <table className="dashboard-data-table compact-table">
       <thead><tr><th>Query</th><th>Position</th><th>{type === 'ctr' ? 'Lost Clicks' : type === 'opportunity' ? 'Score' : 'Clicks Δ'}</th><th>Action</th></tr></thead>
@@ -720,6 +825,8 @@ function GeoLeafletMap({ rows, focusedCountryCode }) {
   const mapRef = useRef(null);
   const layerRef = useRef(null);
   const maxImpressions = Math.max(...(rows || []).map((row) => Number(row.impressions || 0)), 0);
+  const totalClicks = (rows || []).reduce((sum, row) => sum + Number(row.clicks || 0), 0);
+  const totalImpressions = (rows || []).reduce((sum, row) => sum + Number(row.impressions || 0), 0);
   const plottedRows = (rows || []).map((row) => {
     const code = normalizedCountryCode(row.country);
     const meta = GEO_COUNTRY_META[code] || { name: row.country_label || code || 'Unknown', lat: 0, lng: 0 };
@@ -737,13 +844,18 @@ function GeoLeafletMap({ rows, focusedCountryCode }) {
     }).setView([22, 10], 2);
 
     L.control.zoom({ position: 'bottomright' }).addTo(mapRef.current);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       maxZoom: 8,
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
     }).addTo(mapRef.current);
     layerRef.current = L.layerGroup().addTo(mapRef.current);
+    setTimeout(() => mapRef.current?.invalidateSize(), 120);
+
+    const handleResize = () => mapRef.current?.invalidateSize();
+    window.addEventListener('resize', handleResize);
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       mapRef.current?.remove();
       mapRef.current = null;
       layerRef.current = null;
@@ -757,14 +869,15 @@ function GeoLeafletMap({ rows, focusedCountryCode }) {
 
     plottedRows.forEach((row) => {
       const isFocused = !focusedCountryCode || row.code === focusedCountryCode;
-      const radius = 7 + row.intensity * 28;
+      const radius = 7 + Math.sqrt(row.intensity) * 24;
       const marker = L.circleMarker([row.meta.lat, row.meta.lng], {
         radius,
         color: isFocused ? '#000142' : '#ff9d00',
-        fillColor: isFocused ? '#ff9d00' : '#ffbf5c',
-        fillOpacity: isFocused ? 0.72 : 0.24,
-        opacity: isFocused ? 1 : 0.34,
-        weight: isFocused ? 3 : 1.5
+        fillColor: isFocused ? '#ff9d00' : '#ffd08a',
+        fillOpacity: isFocused ? 0.66 : 0.22,
+        opacity: isFocused ? 0.95 : 0.42,
+        weight: isFocused ? 2.5 : 1.4,
+        className: 'geo-map-marker'
       });
       marker.bindPopup(`
         <strong>${displayCountryName(row)}</strong><br/>
@@ -782,10 +895,18 @@ function GeoLeafletMap({ rows, focusedCountryCode }) {
     } else {
       mapRef.current.flyTo([22, 10], 2, { duration: 0.7 });
     }
+    setTimeout(() => mapRef.current?.invalidateSize(), 80);
   }, [focusedCountryCode, maxImpressions, rows]);
 
   return (
     <div className="geo-world-map">
+      {plottedRows.length ? (
+        <div className="geo-map-summary-pill">
+          <strong>{numberFmt(plottedRows.length)}</strong> markets
+          <span>{numberFmt(totalImpressions)} impressions</span>
+          <span>{numberFmt(totalClicks)} clicks</span>
+        </div>
+      ) : null}
       <div ref={mapElementRef} className="geo-leaflet-map" aria-label="World map showing Google Search Console geographic presence" />
       {!plottedRows.length ? (
         <div className="geo-map-empty">
@@ -817,7 +938,7 @@ function GeoCountryTable({ rows }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No country data yet" text="Sync Google Search Console to populate country rows." />;
 
   return (
-    <table className="dashboard-data-table">
+    <table className="dashboard-data-table geo-data-table geo-page-table">
       <thead><tr><th>Country</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Position</th></tr></thead>
       <tbody>
         {rows.slice(0, 12).map((row) => (
@@ -835,10 +956,10 @@ function GeoCountryTable({ rows }) {
 }
 
 function GeoQueryTable({ rows, detailed = false }) {
-  if (!rows?.length) return <DashboardEmptyBlock title="No query data yet" text="Sync Google Search Console to populate query and page rows." />;
+  if (!rows?.length) return <DashboardEmptyBlock title="No query data yet" text="Country, page, device, and daily performance are synced. Google has not returned current query rows yet, usually because the keyword data is too low-volume or privacy-filtered." />;
 
   return (
-    <table className="dashboard-data-table">
+    <table className="dashboard-data-table geo-data-table geo-device-table">
       <thead>
         <tr>
           <th>Query</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Position</th>
@@ -878,7 +999,7 @@ function GeoPageTable({ rows }) {
   if (!rows?.length) return <DashboardEmptyBlock title="No page data yet" text="Sync Search Console to populate page performance rows." />;
 
   return (
-    <table className="dashboard-data-table">
+    <table className="dashboard-data-table geo-data-table geo-search-appearance-table">
       <thead><tr><th>URL</th><th>Clicks</th><th>Impressions</th><th>CTR</th><th>Position</th><th>Status</th><th>Page Type</th><th>Tags</th></tr></thead>
       <tbody>
         {rows.slice(0, 18).map((row) => (

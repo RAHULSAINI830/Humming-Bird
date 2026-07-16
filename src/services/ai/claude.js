@@ -136,6 +136,124 @@ function createClaudeError(code, providerMessage = '', providerStatus = '') {
   return error;
 }
 
+function normalizeClaudeJsonText(text) {
+  const trimmed = String(text || '').trim();
+
+  if (!trimmed) return '';
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return trimmed;
+}
+
+function normalizeAeoItems(payload, key, fields, minimum) {
+  const items = Array.isArray(payload?.[key]) ? payload[key] : [];
+
+  if (items.length < minimum) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  return items.slice(0, 8).map((item) => {
+    const normalized = {};
+
+    fields.forEach((field) => {
+      const value = item?.[field];
+
+      if (typeof value !== 'string' || !value.trim()) {
+        throw new Error('AI_INVALID_JSON');
+      }
+
+      normalized[field] = value.trim();
+    });
+
+    return normalized;
+  });
+}
+
+function validateAeoRecommendationsPayload(payload) {
+  const focusSummary = payload?.focus_summary;
+
+  if (typeof focusSummary !== 'string' || !focusSummary.trim()) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  return {
+    focus_summary: focusSummary.trim(),
+    priorities: normalizeAeoItems(payload, 'priorities', ['title', 'focus_area', 'why_it_matters', 'evidence', 'impact', 'effort'], 3),
+    action_plan: normalizeAeoItems(payload, 'action_plan', ['step', 'how_to_do_it', 'priority', 'expected_outcome'], 4),
+    content_opportunities: normalizeAeoItems(payload, 'content_opportunities', ['topic', 'target_prompt', 'page_type', 'reason'], 3),
+    evidence: normalizeAeoItems(payload, 'evidence', ['metric', 'finding'], 3)
+  };
+}
+
+function buildAeoRecommendationsPrompt(context) {
+  return `You are Hummingbird, an AEO/GEO strategy lead.
+
+Create a practical "what to do next" action plan for this brand using only saved Hummingbird data.
+
+Use the provided saved business analysis, prompt checks, competitor mentions, citation recommendations, and dashboard metrics.
+
+Rules:
+- Return only valid JSON.
+- Do not return markdown.
+- Do not invent facts or metrics.
+- Every recommendation must be tied to the provided saved data.
+- If data is thin or missing, say what data must be collected next instead of pretending.
+- Focus on AEO/GEO: answer-engine visibility, brand mentions, competitor gap, citation footprint, content pages, and prompt coverage.
+- Keep all copy client-ready, direct, and actionable.
+- "impact" must be High, Medium, or Low.
+- "effort" must be High, Medium, or Low.
+- "priority" must be P1, P2, or P3.
+
+Return this exact JSON shape:
+{
+  "focus_summary": "",
+  "priorities": [
+    {
+      "title": "",
+      "focus_area": "",
+      "why_it_matters": "",
+      "evidence": "",
+      "impact": "",
+      "effort": ""
+    }
+  ],
+  "action_plan": [
+    {
+      "step": "",
+      "how_to_do_it": "",
+      "priority": "",
+      "expected_outcome": ""
+    }
+  ],
+  "content_opportunities": [
+    {
+      "topic": "",
+      "target_prompt": "",
+      "page_type": "",
+      "reason": ""
+    }
+  ],
+  "evidence": [
+    {
+      "metric": "",
+      "finding": ""
+    }
+  ]
+}
+
+Saved Hummingbird data:
+${JSON.stringify(context, null, 2)}`;
+}
+
 async function callClaude(prompt, signal) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -234,6 +352,32 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
   return results;
 }
 
+async function generateAeoRecommendations(context) {
+  if (!claudeApiKey()) {
+    throw new Error('CLAUDE_MISSING_KEY');
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), claudeTimeout());
+
+  try {
+    const payload = await callClaude(buildAeoRecommendationsPrompt(context), controller.signal);
+    const text = normalizeClaudeJsonText(extractClaudeText(payload));
+
+    if (!text) {
+      throw new Error('AI_INVALID_JSON');
+    }
+
+    return validateAeoRecommendationsPayload(JSON.parse(text));
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('CLAUDE_TIMEOUT');
+    if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function getProviderDiagnostics() {
   return {
     provider: 'Claude',
@@ -248,5 +392,6 @@ function getProviderDiagnostics() {
 
 module.exports = {
   analyzePromptVisibility,
+  generateAeoRecommendations,
   getProviderDiagnostics
 };
