@@ -178,6 +178,7 @@ const ANALYSIS_FIELDS = [
   'target_audience'
 ];
 const PROMPT_FIELDS = ['prompt_text', 'prompt_category', 'prompt_intent'];
+const PROMPT_RESEARCH_FIELDS = ['prompt_text', 'prompt_category', 'prompt_intent', 'why_recommended', 'priority'];
 const COMPETITOR_FIELDS = ['competitor_name', 'website_url', 'reason'];
 const AEO_PRIORITY_FIELDS = ['title', 'focus_area', 'why_it_matters', 'evidence', 'impact', 'effort'];
 const AEO_ACTION_FIELDS = ['step', 'how_to_do_it', 'priority', 'expected_outcome'];
@@ -212,6 +213,32 @@ function promptGenerationJsonSchema() {
             prompt_text: { type: 'STRING' },
             prompt_category: { type: 'STRING' },
             prompt_intent: { type: 'STRING' }
+          }
+        }
+      }
+    }
+  };
+}
+
+function promptResearchJsonSchema(maxItems = 10) {
+  return {
+    type: 'OBJECT',
+    required: ['prompts'],
+    properties: {
+      prompts: {
+        type: 'ARRAY',
+        minItems: 1,
+        maxItems: Math.max(1, Math.min(Number(maxItems) || 10, 30)),
+        items: {
+          type: 'OBJECT',
+          required: PROMPT_RESEARCH_FIELDS,
+          propertyOrdering: PROMPT_RESEARCH_FIELDS,
+          properties: {
+            prompt_text: { type: 'STRING' },
+            prompt_category: { type: 'STRING' },
+            prompt_intent: { type: 'STRING' },
+            why_recommended: { type: 'STRING' },
+            priority: { type: 'STRING' }
           }
         }
       }
@@ -530,6 +557,117 @@ function validatePromptGenerationPayload(payload) {
       }
 
       normalized[field] = value.trim();
+    }
+
+    return normalized;
+  });
+}
+
+function buildPromptResearchPrompt(company, analysis, websiteSnapshot, existingPrompts, research) {
+  const maxPrompts = Math.max(1, Math.min(Number(research?.maxPrompts) || 10, 30));
+  const context = {
+    company: {
+      company_name: company.company_name || '',
+      website_url: company.website_url || '',
+      industry: company.industry || '',
+      service_area: company.service_area || '',
+      target_country: company.target_country || '',
+      main_services: company.main_services || '',
+      known_competitors: company.known_competitors || '',
+      brand_description: company.brand_description || '',
+      target_audience: company.target_audience || ''
+    },
+    business_analysis: {
+      business_summary: analysis?.business_summary || '',
+      detected_industry: analysis?.detected_industry || '',
+      detected_services: analysis?.detected_services || '',
+      target_audience_summary: analysis?.target_audience_summary || '',
+      service_area_summary: analysis?.service_area_summary || '',
+      positioning_summary: analysis?.positioning_summary || ''
+    },
+    website_snapshot: {
+      fetched: Boolean(websiteSnapshot?.fetched),
+      url: websiteSnapshot?.url || company.website_url || '',
+      title: websiteSnapshot?.title || '',
+      description: websiteSnapshot?.description || '',
+      readable_text: websiteSnapshot?.text || '',
+      fetch_error: websiteSnapshot?.error || ''
+    },
+    current_saved_prompts: (existingPrompts || []).map((prompt) => ({
+      prompt_text: prompt.prompt_text || '',
+      prompt_category: prompt.prompt_category || '',
+      prompt_intent: prompt.prompt_intent || ''
+    })),
+    research_brief: {
+      max_prompts_to_return: maxPrompts,
+      research_goal: research?.goal || '',
+      target_buyer: research?.audience || '',
+      service_or_topic_focus: research?.serviceFocus || '',
+      market_or_location_focus: research?.locationFocus || '',
+      buyer_stage: research?.buyerStage || '',
+      extra_notes: research?.notes || ''
+    }
+  };
+
+  return `You are Hummingbird, an AI visibility prompt strategist.
+
+Research new buyer-intent prompts for this company. The user will decide which prompts to include in the workspace.
+
+Use only the provided website content, business analysis, current saved prompts, and research brief.
+
+Rules:
+- Return only valid JSON.
+- Do not return markdown.
+- Do not duplicate or lightly rephrase the current saved prompts.
+- Do not invent unsupported services, locations, industries, or competitors.
+- Prompts must be useful for answer-engine visibility research across ChatGPT, Hummingbird AI, Claude, Perplexity, and similar AI search tools.
+- Every prompt must sound like a real buyer, operator, or decision-maker asking for help.
+- Focus on prompts the company should actively track or optimize content for.
+- If the research brief is narrow, prioritize that brief.
+- If a requested angle is unsupported by the business data, choose a safer adjacent buyer-intent prompt.
+- Return no more than ${maxPrompts} prompts.
+- "priority" must be High, Medium, or Low.
+
+Return exactly this JSON shape:
+{
+  "prompts": [
+    {
+      "prompt_text": "",
+      "prompt_category": "",
+      "prompt_intent": "",
+      "why_recommended": "",
+      "priority": ""
+    }
+  ]
+}
+
+Context:
+${JSON.stringify(context, null, 2)}`;
+}
+
+function validatePromptResearchPayload(payload, maxPrompts) {
+  const prompts = Array.isArray(payload?.prompts) ? payload.prompts : [];
+  const limit = Math.max(1, Math.min(Number(maxPrompts) || 10, 30));
+
+  if (!prompts.length) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  return prompts.slice(0, limit).map((prompt) => {
+    const normalized = {};
+
+    for (const field of PROMPT_RESEARCH_FIELDS) {
+      const value = prompt?.[field];
+
+      if (typeof value !== 'string' || !value.trim()) {
+        throw new Error('AI_INVALID_JSON');
+      }
+
+      normalized[field] = value.trim();
+    }
+
+    if (!['high', 'medium', 'low'].includes(normalized.priority.toLowerCase())) {
+      normalized.priority = 'Medium';
     }
 
     return normalized;
@@ -1190,6 +1328,49 @@ async function generateCompanyPrompts(company, analysis) {
   }
 }
 
+async function researchPrompts(company, analysis, existingPrompts = [], research = {}) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('AI_MISSING_KEY');
+  }
+
+  const maxPrompts = Math.max(1, Math.min(Number(research.maxPrompts) || 10, 30));
+  const websiteSnapshot = await extractWebsiteSnapshot(company.website_url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), geminiTimeout());
+
+  try {
+    const response = await callGemini({
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: buildPromptResearchPrompt(company, analysis, websiteSnapshot, existingPrompts, research) }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.35,
+        responseMimeType: 'application/json',
+        responseSchema: promptResearchJsonSchema(maxPrompts)
+      }
+    }, controller.signal);
+
+    const payload = await response.json();
+    const text = normalizeGeminiJsonText(extractGeminiText(payload));
+
+    if (!text) {
+      throw new Error('AI_INVALID_JSON');
+    }
+
+    return validatePromptResearchPayload(JSON.parse(text), maxPrompts);
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
+    if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+    if (error instanceof TypeError) throw createNetworkError(error);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function discoverCompetitors(company, analysis) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('AI_MISSING_KEY');
@@ -1342,6 +1523,7 @@ async function generateAeoRecommendations(context) {
 module.exports = {
   generateBusinessAnalysis,
   generateCompanyPrompts,
+  researchPrompts,
   discoverCompetitors,
   analyzePromptVisibility,
   generateAeoRecommendations,

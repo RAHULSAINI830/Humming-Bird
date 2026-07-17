@@ -37,6 +37,8 @@ const {
   listAeoRecommendations,
   listAeoActionTracking,
   upsertAeoActionTracking,
+  createDeveloperHelpRequest,
+  listDeveloperHelpRequests,
   listCompanyPrompts,
   listCompanyCompetitors,
   addCompanyPrompt,
@@ -842,19 +844,42 @@ function competitorLimitError(limit) {
   return `Competitor limit reached. This workspace can track up to ${limit} competitors. Contact your administrator to increase the limit.`;
 }
 
-function shouldBootstrapAllConfiguredProviders(companyId, prompts = []) {
-  if (!prompts.length) return false;
-
-  const configuredPaidProviderFields = [
+function configuredVisibilityProviderFields() {
+  return [
+    ['gemini', 'gemini_response_summary'],
     ['openai', 'chatgpt_response_summary'],
     ['claude', 'claude_response_summary'],
     ['perplexity', 'perplexity_response_summary']
   ].filter(([providerName]) => {
+    if (providerName === 'gemini') return Boolean(process.env.GEMINI_API_KEY);
     if (providerName === 'openai') return Boolean(process.env.OPENAI_API_KEY);
     if (providerName === 'claude') return Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
     if (providerName === 'perplexity') return Boolean(process.env.PERPLEXITY_API_KEY);
     return false;
   });
+}
+
+function providerResponseIsSaved(prompt, fieldName) {
+  const value = String(prompt?.[fieldName] || '').trim();
+  return Boolean(value && value.toUpperCase() !== 'NA');
+}
+
+function promptsHaveConfiguredProviderResponses(prompts = []) {
+  if (!prompts.length) return false;
+
+  const configuredProviderFields = configuredVisibilityProviderFields();
+
+  if (!configuredProviderFields.length) return false;
+
+  return configuredProviderFields.every(([, fieldName]) =>
+    prompts.every((prompt) => providerResponseIsSaved(prompt, fieldName))
+  );
+}
+
+function shouldBootstrapAllConfiguredProviders(companyId, prompts = []) {
+  if (!prompts.length) return false;
+
+  const configuredProviderFields = configuredVisibilityProviderFields();
 
   const summary = promptSummary(prompts);
   const hasSavedChecks = summary.checked > 0;
@@ -864,18 +889,11 @@ function shouldBootstrapAllConfiguredProviders(companyId, prompts = []) {
     return true;
   }
 
-  if (!configuredPaidProviderFields.length) {
+  if (!configuredProviderFields.length) {
     return false;
   }
 
-  const hasEveryConfiguredPaidProviderResponse = configuredPaidProviderFields.every(([, fieldName]) =>
-    prompts.some((prompt) => {
-      const value = String(prompt[fieldName] || '').trim();
-      return value && value.toUpperCase() !== 'NA';
-    })
-  );
-
-  return !hasEveryConfiguredPaidProviderResponse;
+  return !promptsHaveConfiguredProviderResponses(prompts);
 }
 
 function logProviderUsageFromResults(companyId, runId, results) {
@@ -912,6 +930,7 @@ function developerAdminPayload() {
     companies,
     users: listAllUsersForDeveloper(),
     accessRecords: listWorkspaceAccessForDeveloper(),
+    helpRequests: listDeveloperHelpRequests(30),
     providerControlsByCompany
   };
 }
@@ -1302,6 +1321,9 @@ function setupPipelineStatus(companyId) {
   const prompts = listCompanyPrompts(companyId);
   const competitors = listCompanyCompetitors(companyId);
   const promptSummaryData = promptSummary(prompts);
+  const hasVisibilityRun = listPromptVisibilityRuns(companyId, 1).length > 0;
+  const visibilityChecksComplete = promptSummaryData.checked > 0 || hasVisibilityRun;
+  const hasUncheckedPromptCapacity = prompts.length > 0 && !promptsHaveConfiguredProviderResponses(prompts);
   const steps = [
     {
       key: 'analysis',
@@ -1324,8 +1346,10 @@ function setupPipelineStatus(companyId) {
     {
       key: 'checks',
       label: 'AI visibility checks',
-      complete: promptSummaryData.checked > 0,
-      description: 'Send prompts to available AI provider and save responses.'
+      complete: visibilityChecksComplete,
+      description: hasUncheckedPromptCapacity && visibilityChecksComplete
+        ? 'Initial visibility data exists. Refresh new prompts from Settings when ready.'
+        : 'Send prompts to every configured AI provider and save responses.'
     }
   ];
 
@@ -1337,6 +1361,7 @@ function setupPipelineStatus(companyId) {
       prompts: prompts.length,
       competitors: competitors.length,
       checkedPrompts: promptSummaryData.checked,
+      visibilityRuns: hasVisibilityRun ? 1 : 0,
       brandMentioned: promptSummaryData.brandMentioned,
       citations: promptSummaryData.citations
     },
@@ -2772,6 +2797,155 @@ function settingsPayload(context) {
   };
 }
 
+function helpBotProductMap() {
+  return [
+    {
+      keywords: ['prompt research', 'research prompt', 'research prompts', 'prompt idea', 'prompt ideas', 'candidate prompt', 'candidate prompts'],
+      title: 'Prompt Research',
+      steps: ['Open Prompt Research from the left sidebar.', 'Choose the AI model you want to use for research.', 'Answer the brief: goal, service/topic focus, buyer, location, buyer stage, and notes.', 'Review the candidate prompts and select only the ones you want to track.', 'Click Include selected prompts to add them to the main Prompts table.'],
+      answer: 'Prompt Research helps you discover new buyer-intent prompts before they become tracked prompts. It respects the Developer-set prompt limit, so if a workspace has 30 prompt slots and already uses 20, research can only add up to 10 more.'
+    },
+    {
+      keywords: ['dashboard', 'overview', 'visibility score', 'share of voice', 'brand mention', 'average brand position'],
+      title: 'Overview dashboard',
+      steps: ['Open Dashboard from the left sidebar.', 'Review AI Visibility Score, Share of Voice, Citation Coverage, Brand Mentions, and Average Brand Position.', 'Use Export Overview to download the current overview data.'],
+      answer: 'The Overview dashboard combines saved AI response checks into client-ready visibility metrics. Average Brand Position shows the average rank/placement of your brand when it appears inside AI answers; lower is better.'
+    },
+    {
+      keywords: ['business analysis', 'business intelligence', 'analysis'],
+      title: 'Business Analysis',
+      steps: ['Open Business Analysis from the left sidebar.', 'Review the saved business summary, industry, services, audience, service area, and positioning.', 'Use the setup screen or settings refresh flow to regenerate when allowed.'],
+      answer: 'Business Analysis is the saved company intelligence generated from the company profile and website. Hummingbird uses it to discover competitors, generate prompts, and create What’s Next recommendations.'
+    },
+    {
+      keywords: ['prompt', 'prompts', 'add prompt', 'manual prompt'],
+      title: 'Prompts',
+      steps: ['Open Prompts from the left sidebar.', 'Click a prompt row to view exact AI responses by provider.', 'Use Add prompt for a manual prompt or Research prompts to find new candidate prompts.', 'Prompt creation is capped by the Developer-set workspace prompt limit.'],
+      answer: 'Prompts are buyer-intent AI-search questions that Hummingbird sends to enabled AI providers. They power brand mentions, competitor mentions, citations, and overview charts.'
+    },
+    {
+      keywords: ['competitor', 'competitors'],
+      title: 'Competitors',
+      steps: ['Open Competitors from the left sidebar.', 'Review tracked competitors and website URLs.', 'Use the add button if your role can manage content and the workspace has competitor slots remaining.'],
+      answer: 'Competitors are the brands Hummingbird checks against your company in AI responses. They help calculate share of voice, competitor mentions, and visibility gaps.'
+    },
+    {
+      keywords: ['citation', 'citations', 'source', 'sources'],
+      title: 'Citations',
+      steps: ['Open Citations from the left sidebar.', 'Review pages recommended or found from saved AI response checks.', 'Use those pages to understand what sources support AI visibility.'],
+      answer: 'Citations show pages and URLs connected to AI response visibility. They help identify which pages AI tools may reference for your brand or competitors.'
+    },
+    {
+      keywords: ['geo', 'geographic', 'google search console', 'gsc', 'search console', 'country', 'query', 'pages'],
+      title: 'GEO Visibility',
+      steps: ['Open GEO Visibility from the left sidebar.', 'Connect Google Search Console if not connected.', 'Select the verified property for this workspace.', 'Use Performance, Queries, Pages, Countries, and Technical sub-tabs to inspect saved GSC data.'],
+      answer: 'GEO Visibility uses saved Google Search Console rows to show search presence by performance, query, URL, country, and device. It only shows data for the selected workspace/property.'
+    },
+    {
+      keywords: ['what next', 'recommendation', 'plan', 'aeo', 'actions'],
+      title: 'What’s Next',
+      steps: ['Open What’s Next from the left sidebar.', 'Generate a plan after business analysis, competitors, prompts, and AI checks exist.', 'Track each recommended action manually as not started, in progress, done, or blocked.'],
+      answer: 'What’s Next turns saved Hummingbird data into a practical AEO/GEO action plan. It is designed to show what to focus on and why.'
+    },
+    {
+      keywords: ['settings', 'users', 'workspace', 'company profile', 'refresh', 'regenerate'],
+      title: 'Settings',
+      steps: ['Open Settings from the left sidebar.', 'Manage company profile, users, workspace creation, and saved refresh actions depending on your role.', 'Use Refresh Visibility to re-run saved prompts when allowed.'],
+      answer: 'Settings is where workspace admins manage profile data, users, workspace creation, and manual refresh controls.'
+    },
+    {
+      keywords: ['developer', 'limit', 'limits', 'permission', 'provider', 'api', 'daily update', 'auto refresh'],
+      title: 'Developer Admin',
+      steps: ['Sign in with a Developer role.', 'Open Developer Admin from the sidebar.', 'Manage company limits, provider permissions, automation policy, users, and workspace access.'],
+      answer: 'Developer Admin controls platform-level limits and paid-provider access, including prompt limits, competitor limits, AI provider usage, workspace creation limits, and refresh schedules.'
+    }
+  ];
+}
+
+function workspaceHelpFacts(context) {
+  if (!context?.access?.company_id) return {};
+
+  const companyId = context.access.company_id;
+  const prompts = listCompanyPrompts(companyId);
+  const competitors = listCompanyCompetitors(companyId);
+  const analysis = getLatestBusinessAnalysis(companyId);
+  const geoConnection = getGoogleConnection(companyId);
+  const selectedGeoProperty = getSelectedSearchConsoleProperty(companyId);
+  const limits = getCompanyLimits(companyId);
+  const visibilitySummary = promptSummary(prompts);
+
+  return {
+    companyName: context.access.company_name,
+    roleName: context.access.role_name,
+    prompts: prompts.length,
+    checkedPrompts: visibilitySummary.checked,
+    competitors: competitors.length,
+    citations: visibilitySummary.citations,
+    businessAnalysisStatus: analysis?.analysis_status || 'not_started',
+    geoConnected: geoConnection?.status === 'connected',
+    geoProperty: selectedGeoProperty?.site_url || '',
+    promptLimit: limits.prompt_limit,
+    promptRemaining: limits.prompt_remaining,
+    competitorLimit: limits.competitor_limit,
+    competitorRemaining: limits.competitor_remaining
+  };
+}
+
+function buildHelpBotAnswer(question, context) {
+  const normalized = String(question || '').toLowerCase();
+  const facts = workspaceHelpFacts(context);
+  const match = helpBotProductMap().find((item) => item.keywords.some((keyword) => normalized.includes(keyword)));
+
+  if (!match) {
+    return {
+      confidence: 'low',
+      title: 'Developer request created',
+      answer: 'I could not confidently answer that from the built-in Hummingbird help guide. I sent this question to the Developer team so they can review it.',
+      steps: ['A Developer can review this request in the platform request log.', 'Try asking about Dashboard, Prompts, Competitors, Citations, GEO Visibility, What’s Next, Settings, or Developer Admin.'],
+      facts,
+      shouldCreateDeveloperRequest: true
+    };
+  }
+
+  return {
+    confidence: 'high',
+    title: match.title,
+    answer: match.answer,
+    steps: match.steps,
+    facts,
+    shouldCreateDeveloperRequest: false
+  };
+}
+
+async function handleHelpChat(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  const body = await readJson(req);
+  const question = normalize(body.question);
+
+  if (!question) {
+    return sendJson(res, { error: 'Ask a question first.' }, 422);
+  }
+
+  const answer = buildHelpBotAnswer(question, context);
+
+  if (answer.shouldCreateDeveloperRequest) {
+    const result = createDeveloperHelpRequest({
+      companyId: context.access.company_id,
+      userId: context.session.userId,
+      question,
+      botAnswer: answer.answer
+    });
+    answer.requestId = Number(result.lastInsertRowid || 0);
+  }
+
+  return sendJson(res, answer);
+}
+
 function isAuthorizedCronRequest(req) {
   const cronSecret = process.env.CRON_SECRET || process.env.HUMMINGBIRD_CRON_SECRET;
 
@@ -3174,6 +3348,155 @@ async function handleAddPrompt(req, res) {
     promptCategory,
     promptIntent,
     sourceType: 'manual'
+  });
+
+  const prompts = listCompanyPrompts(context.access.company_id);
+
+  return sendJson(res, {
+    ok: true,
+    prompts: enrichPrompts(prompts),
+    summary: promptSummary(prompts),
+    limits: companyLimitPayload(context.access.company_id),
+    canManage: true
+  }, 201);
+}
+
+function sanitizeResearchSuggestion(prompt, index = 0) {
+  return {
+    id: `research-${Date.now()}-${index}`,
+    prompt_text: normalize(prompt?.prompt_text),
+    prompt_category: normalize(prompt?.prompt_category || 'Prompt Research'),
+    prompt_intent: normalize(prompt?.prompt_intent || 'Buyer-intent tracking'),
+    why_recommended: normalize(prompt?.why_recommended || 'Recommended by prompt research.'),
+    priority: normalize(prompt?.priority || 'Medium')
+  };
+}
+
+async function handleResearchPrompts(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  if (!CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const limits = getCompanyLimits(context.access.company_id);
+  const remaining = Number(limits.prompt_remaining || 0);
+
+  if (remaining <= 0) {
+    return sendJson(res, { error: promptLimitError(limits.prompt_limit), limits: companyLimitPayload(context.access.company_id) }, 409);
+  }
+
+  const body = await readJson(req);
+  const errors = {};
+  const providerName = normalize(body.providerName || 'gemini').toLowerCase();
+  const allowedProviders = ['gemini', 'openai', 'claude', 'perplexity'];
+  const maxPrompts = Math.max(1, Math.min(Number(body.maxPrompts || remaining) || remaining, remaining));
+  const research = {
+    providerName,
+    goal: normalize(body.goal),
+    audience: normalize(body.audience),
+    serviceFocus: normalize(body.serviceFocus),
+    locationFocus: normalize(body.locationFocus),
+    buyerStage: normalize(body.buyerStage),
+    notes: normalize(body.notes),
+    maxPrompts
+  };
+
+  if (!allowedProviders.includes(providerName)) errors.providerName = 'Choose a supported AI model.';
+  if (!research.goal) errors.goal = 'Research goal is required.';
+  if (!research.serviceFocus) errors.serviceFocus = 'Service or topic focus is required.';
+  if (!research.audience) errors.audience = 'Target buyer is required.';
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please answer the research questions first.', errors }, 422);
+  }
+
+  const analysis = getLatestCompletedBusinessAnalysis(context.access.company_id);
+
+  if (!analysis) {
+    return sendJson(res, { error: 'Complete business analysis before researching prompts.' }, 409);
+  }
+
+  const existingPrompts = listCompanyPrompts(context.access.company_id);
+  const existingPromptTexts = new Set(existingPrompts.map((prompt) => String(prompt.prompt_text || '').trim().toLowerCase()));
+
+  try {
+    const suggestions = (await AIService.researchPrompts(context.access, analysis, existingPrompts, research))
+      .map(sanitizeResearchSuggestion)
+      .filter((prompt) => prompt.prompt_text && !existingPromptTexts.has(prompt.prompt_text.toLowerCase()))
+      .slice(0, remaining);
+
+    if (!suggestions.length) {
+      return sendJson(res, { error: 'No new prompts were found. Try a different research angle.' }, 409);
+    }
+
+    return sendJson(res, {
+      ok: true,
+      providerName,
+      suggestions,
+      limits: companyLimitPayload(context.access.company_id)
+    });
+  } catch (error) {
+    console.error(error);
+    return sendJson(res, {
+      error: 'Prompt research failed. Please retry or choose another AI model.',
+      code: error?.message || 'PROMPT_RESEARCH_FAILED',
+      providerStatus: error?.providerStatus || '',
+      providerMessage: error?.providerMessage || ''
+    }, 500);
+  }
+}
+
+async function handleIncludeResearchPrompts(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  if (!CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const providerName = normalize(body.providerName || 'research').toLowerCase();
+  const requestedPrompts = Array.isArray(body.prompts) ? body.prompts : [];
+  const normalizedPrompts = requestedPrompts.map(sanitizeResearchSuggestion).filter((prompt) => prompt.prompt_text);
+
+  if (!normalizedPrompts.length) {
+    return sendJson(res, { error: 'Select at least one prompt to include.' }, 422);
+  }
+
+  const limits = getCompanyLimits(context.access.company_id);
+  const remaining = Number(limits.prompt_remaining || 0);
+
+  if (normalizedPrompts.length > remaining) {
+    return sendJson(res, {
+      error: `This workspace only has ${remaining} prompt${remaining === 1 ? '' : 's'} remaining.`,
+      limits: companyLimitPayload(context.access.company_id)
+    }, 409);
+  }
+
+  const existingPromptTexts = new Set(
+    listCompanyPrompts(context.access.company_id).map((prompt) => String(prompt.prompt_text || '').trim().toLowerCase())
+  );
+
+  normalizedPrompts.forEach((prompt) => {
+    const normalizedText = prompt.prompt_text.toLowerCase();
+    if (existingPromptTexts.has(normalizedText)) return;
+    existingPromptTexts.add(normalizedText);
+
+    addCompanyPrompt({
+      companyId: context.access.company_id,
+      promptText: prompt.prompt_text,
+      promptCategory: prompt.prompt_category,
+      promptIntent: prompt.prompt_intent,
+      sourceType: `research-${providerName}`
+    });
   });
 
   const prompts = listCompanyPrompts(context.access.company_id);
@@ -3833,6 +4156,10 @@ async function router(req, res) {
       return handleCreateWorkspace(req, res);
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/help-chat') {
+      return handleHelpChat(req, res);
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/dashboard') {
       return handleDashboard(req, res);
     }
@@ -3899,6 +4226,14 @@ async function router(req, res) {
 
     if (req.method === 'POST' && url.pathname === '/api/prompts/add') {
       return handleAddPrompt(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/prompts/research') {
+      return handleResearchPrompts(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/prompts/research/include') {
+      return handleIncludeResearchPrompts(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/competitors') {

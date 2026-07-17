@@ -23,6 +23,12 @@ function claudeMaxTokens() {
   return Number.isFinite(value) && value > 0 ? Math.min(value, 4096) : 900;
 }
 
+function claudeAeoMaxTokens() {
+  const value = Number(process.env.CLAUDE_AEO_MAX_TOKENS || claudeMaxTokens());
+  const normalized = Number.isFinite(value) && value > 0 ? value : claudeMaxTokens();
+  return Math.min(Math.max(normalized, 2600), 4096);
+}
+
 function claudeKeyEnding() {
   const key = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || '';
   return key ? key.slice(-6) : 'missing';
@@ -154,6 +160,29 @@ function normalizeClaudeJsonText(text) {
   return trimmed;
 }
 
+function parseClaudeJson(text) {
+  const normalized = normalizeClaudeJsonText(text)
+    .replace(/,\s*([}\]])/g, '$1')
+    .trim();
+
+  if (!normalized) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  try {
+    return JSON.parse(normalized);
+  } catch (error) {
+    const firstBrace = normalized.indexOf('{');
+    const lastBrace = normalized.lastIndexOf('}');
+
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      return JSON.parse(normalized.slice(firstBrace, lastBrace + 1).replace(/,\s*([}\]])/g, '$1'));
+    }
+
+    throw error;
+  }
+}
+
 function normalizeAeoItems(payload, key, fields, minimum) {
   const items = Array.isArray(payload?.[key]) ? payload[key] : [];
 
@@ -204,6 +233,8 @@ Use the provided saved business analysis, prompt checks, competitor mentions, ci
 Rules:
 - Return only valid JSON.
 - Do not return markdown.
+- Do not include commentary before or after the JSON.
+- Keep JSON values concise so the full object fits in one response.
 - Do not invent facts or metrics.
 - Every recommendation must be tied to the provided saved data.
 - If data is thin or missing, say what data must be collected next instead of pretending.
@@ -254,7 +285,9 @@ Saved Hummingbird data:
 ${JSON.stringify(context, null, 2)}`;
 }
 
-async function callClaude(prompt, signal) {
+async function callClaude(prompt, signal, options = {}) {
+  const maxTokens = Number(options.maxTokens || claudeMaxTokens());
+
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -265,7 +298,7 @@ async function callClaude(prompt, signal) {
     signal,
     body: JSON.stringify({
       model: claudeModel(),
-      max_tokens: claudeMaxTokens(),
+      max_tokens: Math.min(Math.max(maxTokens, 1), 4096),
       messages: [
         {
           role: 'user',
@@ -361,14 +394,12 @@ async function generateAeoRecommendations(context) {
   const timeout = setTimeout(() => controller.abort(), claudeTimeout());
 
   try {
-    const payload = await callClaude(buildAeoRecommendationsPrompt(context), controller.signal);
-    const text = normalizeClaudeJsonText(extractClaudeText(payload));
+    const payload = await callClaude(buildAeoRecommendationsPrompt(context), controller.signal, {
+      maxTokens: claudeAeoMaxTokens()
+    });
+    const text = extractClaudeText(payload);
 
-    if (!text) {
-      throw new Error('AI_INVALID_JSON');
-    }
-
-    return validateAeoRecommendationsPayload(JSON.parse(text));
+    return validateAeoRecommendationsPayload(parseClaudeJson(text));
   } catch (error) {
     if (error?.name === 'AbortError') throw new Error('CLAUDE_TIMEOUT');
     if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
@@ -391,6 +422,11 @@ function getProviderDiagnostics() {
 }
 
 module.exports = {
+  callClaude,
+  extractClaudeText,
+  normalizeClaudeJsonText,
+  parseClaudeJson,
+  claudeTimeout,
   analyzePromptVisibility,
   generateAeoRecommendations,
   getProviderDiagnostics

@@ -11,6 +11,183 @@ async function generateCompanyPrompts(company, analysis) {
   return GeminiProvider.generateCompanyPrompts(company, analysis);
 }
 
+function normalizeJsonText(text) {
+  const trimmed = String(text || '').trim();
+
+  if (!trimmed) return '';
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) return fenced[1].trim();
+
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return trimmed;
+}
+
+function buildPromptResearchPrompt(company, analysis, existingPrompts, research) {
+  const maxPrompts = Math.max(1, Math.min(Number(research?.maxPrompts) || 10, 30));
+  const context = {
+    company: {
+      company_name: company.company_name || '',
+      website_url: company.website_url || '',
+      industry: company.industry || '',
+      service_area: company.service_area || '',
+      target_country: company.target_country || '',
+      main_services: company.main_services || '',
+      brand_description: company.brand_description || '',
+      target_audience: company.target_audience || ''
+    },
+    business_analysis: analysis || {},
+    current_saved_prompts: (existingPrompts || []).map((prompt) => ({
+      prompt_text: prompt.prompt_text || '',
+      prompt_category: prompt.prompt_category || '',
+      prompt_intent: prompt.prompt_intent || ''
+    })),
+    research_brief: {
+      max_prompts_to_return: maxPrompts,
+      research_goal: research?.goal || '',
+      target_buyer: research?.audience || '',
+      service_or_topic_focus: research?.serviceFocus || '',
+      market_or_location_focus: research?.locationFocus || '',
+      buyer_stage: research?.buyerStage || '',
+      extra_notes: research?.notes || ''
+    }
+  };
+
+  return `You are Hummingbird, an AI visibility prompt strategist.
+
+Research new buyer-intent prompts for this company. The user will decide which prompts to include in the workspace.
+
+Rules:
+- Return only valid JSON.
+- Do not return markdown.
+- Do not duplicate or lightly rephrase current saved prompts.
+- Do not invent unsupported services, locations, industries, or competitors.
+- Prompts must be useful for answer-engine visibility research across ChatGPT, Hummingbird AI, Claude, Perplexity, and similar AI search tools.
+- Every prompt must sound like a real buyer, operator, or decision-maker asking for help.
+- Focus on prompts the company should actively track or optimize content for.
+- Use the research brief to shape the angle.
+- Return no more than ${maxPrompts} prompts.
+- "priority" must be High, Medium, or Low.
+
+Return exactly this JSON shape:
+{
+  "prompts": [
+    {
+      "prompt_text": "",
+      "prompt_category": "",
+      "prompt_intent": "",
+      "why_recommended": "",
+      "priority": ""
+    }
+  ]
+}
+
+Context:
+${JSON.stringify(context, null, 2)}`;
+}
+
+function validatePromptResearchPayload(payload, maxPrompts) {
+  const prompts = Array.isArray(payload?.prompts) ? payload.prompts : [];
+  const limit = Math.max(1, Math.min(Number(maxPrompts) || 10, 30));
+
+  if (!prompts.length) {
+    throw new Error('AI_INVALID_JSON');
+  }
+
+  return prompts.slice(0, limit).map((prompt) => {
+    const normalized = {
+      prompt_text: String(prompt?.prompt_text || '').trim(),
+      prompt_category: String(prompt?.prompt_category || '').trim(),
+      prompt_intent: String(prompt?.prompt_intent || '').trim(),
+      why_recommended: String(prompt?.why_recommended || '').trim(),
+      priority: String(prompt?.priority || 'Medium').trim()
+    };
+
+    if (!normalized.prompt_text || !normalized.prompt_category || !normalized.prompt_intent || !normalized.why_recommended) {
+      throw new Error('AI_INVALID_JSON');
+    }
+
+    if (!['high', 'medium', 'low'].includes(normalized.priority.toLowerCase())) {
+      normalized.priority = 'Medium';
+    }
+
+    return normalized;
+  });
+}
+
+async function researchPrompts(company, analysis, existingPrompts, research = {}) {
+  const providerName = String(research.providerName || 'gemini').trim().toLowerCase();
+  const maxPrompts = Math.max(1, Math.min(Number(research.maxPrompts) || 10, 30));
+
+  if (providerName === 'gemini') {
+    return GeminiProvider.researchPrompts(company, analysis, existingPrompts, research);
+  }
+
+  const prompt = buildPromptResearchPrompt(company, analysis, existingPrompts, research);
+
+  if (providerName === 'openai') {
+    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_MISSING_KEY');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), OpenAIProvider.openaiTimeout());
+
+    try {
+      const payload = await OpenAIProvider.callOpenAi(prompt, controller.signal);
+      return validatePromptResearchPayload(JSON.parse(normalizeJsonText(OpenAIProvider.extractOpenAiText(payload))), maxPrompts);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('OPENAI_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  if (providerName === 'claude') {
+    if (!process.env.CLAUDE_API_KEY && !process.env.ANTHROPIC_API_KEY) throw new Error('CLAUDE_MISSING_KEY');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ClaudeProvider.claudeTimeout());
+
+    try {
+      const payload = await ClaudeProvider.callClaude(prompt, controller.signal);
+      return validatePromptResearchPayload(JSON.parse(normalizeJsonText(ClaudeProvider.extractClaudeText(payload))), maxPrompts);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('CLAUDE_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  if (providerName === 'perplexity') {
+    if (!process.env.PERPLEXITY_API_KEY) throw new Error('PERPLEXITY_MISSING_KEY');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PerplexityProvider.perplexityTimeout());
+
+    try {
+      const payload = await PerplexityProvider.callPerplexity(prompt, controller.signal);
+      return validatePromptResearchPayload(JSON.parse(normalizeJsonText(PerplexityProvider.extractPerplexityText(payload))), maxPrompts);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('PERPLEXITY_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error('UNSUPPORTED_PROMPT_RESEARCH_PROVIDER');
+}
+
 async function discoverCompetitors(company, analysis) {
   return GeminiProvider.discoverCompetitors(company, analysis);
 }
@@ -55,6 +232,10 @@ function providerConfigured(providerName) {
   if (providerName === 'perplexity') return Boolean(process.env.PERPLEXITY_API_KEY);
   if (providerName === 'claude') return Boolean(process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY);
   return false;
+}
+
+function configuredProviderNames() {
+  return ['gemini', 'openai', 'claude', 'perplexity'].filter((providerName) => providerConfigured(providerName));
 }
 
 function shouldRunProvider(providerControls, providerName, refreshType, initialProviderBootstrap) {
@@ -141,6 +322,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     : promptSliceForProvider(prompts, providerControls, providerName);
   let results = [];
   const errors = [];
+  const failedProviders = [];
 
   if (shouldRunProvider(providerControls, 'gemini', refreshType, initialProviderBootstrap)) {
     try {
@@ -154,6 +336,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
         gemini_response_summary: result.gemini_response_summary || result.ai_response_summary || 'NA'
       }));
     } catch (error) {
+      failedProviders.push('gemini');
       errors.push(error);
     }
   }
@@ -166,6 +349,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
         const openAiResults = await OpenAIProvider.analyzePromptVisibility(company, openAiPrompts, competitors, analysis);
         results = mergeProviderResults(results, openAiResults, 'openai');
       } catch (error) {
+        failedProviders.push('openai');
         errors.push(error);
       }
     }
@@ -179,6 +363,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
         const perplexityResults = await PerplexityProvider.analyzePromptVisibility(company, perplexityPrompts, competitors, analysis);
         results = mergeProviderResults(results, perplexityResults, 'perplexity');
       } catch (error) {
+        failedProviders.push('perplexity');
         errors.push(error);
       }
     }
@@ -192,8 +377,36 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
         const claudeResults = await ClaudeProvider.analyzePromptVisibility(company, claudePrompts, competitors, analysis);
         results = mergeProviderResults(results, claudeResults, 'claude');
       } catch (error) {
+        failedProviders.push('claude');
         errors.push(error);
       }
+    }
+  }
+
+  if (initialProviderBootstrap && failedProviders.length) {
+    const error = errors[0] || new Error('AI_PROVIDER_BOOTSTRAP_FAILED');
+    error.failedProviders = Array.from(new Set(failedProviders));
+    throw error;
+  }
+
+  if (initialProviderBootstrap) {
+    const expectedProviderCount = configuredProviderNames().length;
+    const completePromptCount = (results || []).filter((result) => {
+      const saved = [
+        result.gemini_response_summary,
+        result.chatgpt_response_summary,
+        result.claude_response_summary,
+        result.perplexity_response_summary
+      ].filter((value) => {
+        const normalized = String(value || '').trim();
+        return normalized && normalized.toUpperCase() !== 'NA';
+      }).length;
+
+      return saved >= expectedProviderCount;
+    }).length;
+
+    if (expectedProviderCount && completePromptCount < prompts.length) {
+      throw new Error('AI_PROVIDER_BOOTSTRAP_INCOMPLETE');
     }
   }
 
@@ -227,6 +440,7 @@ async function testProviderConnection() {
 module.exports = {
   generateBusinessAnalysis,
   generateCompanyPrompts,
+  researchPrompts,
   discoverCompetitors,
   analyzePromptVisibility,
   generateAeoRecommendations,

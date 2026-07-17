@@ -7,6 +7,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const companies = data?.companies || [];
   const users = data?.users || [];
   const accessRecords = data?.accessRecords || [];
+  const helpRequests = data?.helpRequests || [];
   const businessOwners = users.filter((user) => String(user.roles || '').includes('Business Owner'));
   const providerControlsByCompany = data?.providerControlsByCompany || {};
   const [message, setMessage] = useState('');
@@ -333,6 +334,54 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
             <DashboardEmptyBlock title="No Business Owners yet" text="Business Owner accounts will appear here after signup or access assignment." />
           ) : null}
         </div>
+      </article>
+
+      <article className="developer-section-card help-request-card">
+        <div className="developer-section-head">
+          <div>
+            <p className="eyebrow">Help Bot Escalations</p>
+            <h2>Developer help requests</h2>
+            <p>When the help bot cannot confidently answer a product question, it saves the question here for developer follow-up.</p>
+          </div>
+          <span className="soft-pill">{helpRequests.length} requests</span>
+        </div>
+
+        {helpRequests.length ? (
+          <table className="dashboard-data-table developer-table help-request-table">
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>User</th>
+                <th>Company</th>
+                <th>Status</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {helpRequests.map((request) => (
+                <tr key={request.id}>
+                  <td>
+                    <strong>{request.question}</strong>
+                    {request.bot_answer ? <small>{request.bot_answer}</small> : null}
+                  </td>
+                  <td>
+                    {request.full_name || 'Unknown user'}
+                    <br />
+                    <small>{request.email || 'No email saved'}</small>
+                  </td>
+                  <td>{request.company_name || 'No workspace'}</td>
+                  <td><StatusBadge active={request.request_status === 'open'}>{request.request_status}</StatusBadge></td>
+                  <td>{request.created_at}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <DashboardEmptyBlock
+            title="No help requests yet"
+            text="Unknown help-bot questions will appear here so the developer can add better answers or follow up with the customer."
+          />
+        )}
       </article>
 
       <article className="developer-section-card">

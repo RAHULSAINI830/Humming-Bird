@@ -258,6 +258,9 @@ function getProviderDiagnostics() {
 }
 
 module.exports = {
+  callPerplexity,
+  extractPerplexityText,
+  perplexityTimeout,
   analyzePromptVisibility,
   getProviderDiagnostics
 };

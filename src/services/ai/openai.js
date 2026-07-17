@@ -231,6 +231,9 @@ function getProviderDiagnostics() {
 }
 
 module.exports = {
+  callOpenAi,
+  extractOpenAiText,
+  openaiTimeout,
   analyzePromptVisibility,
   getProviderDiagnostics
 };

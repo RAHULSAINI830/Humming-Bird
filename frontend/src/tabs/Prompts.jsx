@@ -53,11 +53,13 @@ export default function Prompts({ data, onChange, workspace }) {
         subtitle="All generated and manual prompts from the backend database."
         workspace={workspace}
         action={data?.canManage ? (
-          promptLimitReached ? (
-            <span className="limit-reached-pill">Prompt limit reached</span>
-          ) : (
-            <IconButton label="Add prompt" onClick={() => setAddOpen(true)} />
-          )
+          <div className="prompt-header-actions">
+            {promptLimitReached ? (
+              <span className="limit-reached-pill">Prompt limit reached</span>
+            ) : (
+              <IconButton label="Add prompt" onClick={() => setAddOpen(true)} />
+            )}
+          </div>
         ) : null}
       />
 

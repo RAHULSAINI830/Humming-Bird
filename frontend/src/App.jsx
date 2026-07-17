@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { api } from './lib/api';
 import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, geoSubTabs, navItems, readInitialActiveView } from './lib/constants';
 import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, TabLoading, WorkspaceCard, labelForView } from './components/common';
+import HelpBot from './components/HelpBot';
 import businessAnalysisIcon from './assets/nav/business-analysis.svg';
 import citationsIcon from './assets/nav/citations.svg';
 import competitorsIcon from './assets/nav/competitors.svg';
@@ -16,6 +17,7 @@ const BusinessAnalysis = lazy(() => import('./tabs/BusinessAnalysis'));
 const AeoRecommendations = lazy(() => import('./tabs/AeoRecommendations'));
 const Competitors = lazy(() => import('./tabs/Competitors'));
 const Prompts = lazy(() => import('./tabs/Prompts'));
+const PromptResearch = lazy(() => import('./tabs/PromptResearch'));
 const Citations = lazy(() => import('./tabs/Citations'));
 const GeoVisibility = lazy(() => import('./tabs/GeoVisibility'));
 const Settings = lazy(() => import('./tabs/Settings'));
@@ -27,10 +29,22 @@ const navIconMap = {
   'aeo-recommendations': whatsNextIcon,
   competitors: competitorsIcon,
   prompts: promptsIcon,
+  'prompt-research': promptsIcon,
   citations: citationsIcon,
   geo: geoIcon,
   settings: settingsIcon
 };
+
+function setupIsReadyForPortal(setupStatus) {
+  if (!setupStatus) return false;
+  if (setupStatus.ready) return true;
+
+  const stepsByKey = Object.fromEntries((setupStatus.steps || []).map((step) => [step.key, step]));
+  const basicsComplete = ['analysis', 'competitors', 'prompts'].every((key) => Boolean(stepsByKey[key]?.complete));
+  const hasSavedVisibility = Number(setupStatus.counts?.checkedPrompts || 0) > 0 || Number(setupStatus.counts?.visibilityRuns || 0) > 0;
+
+  return basicsComplete && hasSavedVisibility;
+}
 
 function App() {
   const [session, setSession] = useState(null);
@@ -206,6 +220,10 @@ function App() {
       loadView('prompts', '/api/prompts', setPromptsData);
     }
 
+    if (activeView === 'prompt-research') {
+      loadView('prompt-research', '/api/prompts', setPromptsData);
+    }
+
     if (activeView === 'competitors') {
       loadView('competitors', '/api/competitors', setCompetitorsData);
     }
@@ -368,7 +386,7 @@ function App() {
     return <LoadingScreen />;
   }
 
-  if (!session.isDeveloper && session.selectedCompanyId && (!setupStatus || !setupStatus.ready)) {
+  if (!session.isDeveloper && session.selectedCompanyId && !setupIsReadyForPortal(setupStatus)) {
     return (
       <SetupGenerationScreen
         session={session}
@@ -479,6 +497,10 @@ function App() {
               {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
               {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
               {activeView === 'prompts' ? <Prompts data={promptsData} onChange={setPromptsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
+              {activeView === 'prompt-research' ? <PromptResearch data={promptsData} onChange={(next) => {
+                setPromptsData(next);
+                setLoadedViews((current) => ({ ...current, prompts: true, 'prompt-research': true }));
+              }} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
               {activeView === 'citations' ? <Citations data={citationsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
               {activeView === 'geo' ? <GeoVisibility data={geoData} onChange={setGeoData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} geoTab={geoTab} /> : null}
               {activeView === 'settings' ? <Settings data={settingsData} onChange={setSettingsData} onRefreshVisibility={handleRefreshVisibilityResponses} onCreateWorkspace={handleCreateWorkspace} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
@@ -487,6 +509,7 @@ function App() {
           </div>
         ) : null}
       </section>
+      <HelpBot session={session} />
     </main>
   );
 }

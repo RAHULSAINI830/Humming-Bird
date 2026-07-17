@@ -308,6 +308,25 @@ function migrate() {
     CREATE INDEX IF NOT EXISTS idx_ai_provider_usage_company_provider
       ON ai_provider_usage_logs(company_id, provider_name, created_at);
 
+    CREATE TABLE IF NOT EXISTS developer_help_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER,
+      user_id INTEGER,
+      question TEXT NOT NULL,
+      bot_answer TEXT,
+      request_status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_developer_help_requests_company_id
+      ON developer_help_requests(company_id);
+
+    CREATE INDEX IF NOT EXISTS idx_developer_help_requests_status
+      ON developer_help_requests(request_status, created_at);
+
     CREATE TABLE IF NOT EXISTS aeo_recommendations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -1756,6 +1775,34 @@ function upsertAeoActionTracking({ companyId, recommendationId, actionIndex, sta
   `).run(companyId, recommendationId, actionIndex, status, notes, userId || null);
 }
 
+function createDeveloperHelpRequest({ companyId, userId, question, botAnswer = '' }) {
+  return db.prepare(`
+    INSERT INTO developer_help_requests (
+      company_id,
+      user_id,
+      question,
+      bot_answer,
+      request_status
+    )
+    VALUES (?, ?, ?, ?, 'open')
+  `).run(companyId || null, userId || null, question, botAnswer);
+}
+
+function listDeveloperHelpRequests(limit = 25) {
+  return db.prepare(`
+    SELECT
+      developer_help_requests.*,
+      companies.company_name,
+      users.full_name,
+      users.email
+    FROM developer_help_requests
+    LEFT JOIN companies ON companies.id = developer_help_requests.company_id
+    LEFT JOIN users ON users.id = developer_help_requests.user_id
+    ORDER BY developer_help_requests.created_at DESC, developer_help_requests.id DESC
+    LIMIT ?
+  `).all(Math.max(1, Math.min(Number(limit) || 25, 100)));
+}
+
 function listCompanyPrompts(companyId) {
   return db.prepare(`
     SELECT *
@@ -2636,6 +2683,8 @@ module.exports = {
   listAeoRecommendations,
   listAeoActionTracking,
   upsertAeoActionTracking,
+  createDeveloperHelpRequest,
+  listDeveloperHelpRequests,
   listCompanyPrompts,
   getCompanyPromptById,
   addCompanyPrompt,

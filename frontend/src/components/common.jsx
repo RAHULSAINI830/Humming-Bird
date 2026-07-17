@@ -74,7 +74,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
   const hasAnalysis = Boolean(analysis);
   const hasCompetitors = competitors.length > 0;
   const hasPrompts = prompts.length > 0;
-  const hasChecks = (setupStatus?.counts?.checkedPrompts || 0) > 0;
+  const hasChecks = (setupStatus?.counts?.checkedPrompts || 0) > 0 || (setupStatus?.counts?.visibilityRuns || 0) > 0;
   const activeStep = loading === 'generate-competitors'
     ? 'competitors'
     : loading === 'generate-prompts'

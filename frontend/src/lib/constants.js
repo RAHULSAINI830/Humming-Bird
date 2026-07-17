@@ -6,6 +6,7 @@ export const navItems = [
   ['What’s Next', 'aeo-recommendations', '↗'],
   ['Competitors', 'competitors', '◎'],
   ['Prompts', 'prompts', '✦'],
+  ['Prompt Research', 'prompt-research', '✧'],
   ['Citations', 'citations', '◇'],
   ['GEO Visibility', 'geo', '⌖'],
   ['Settings', 'settings', '⚙']
