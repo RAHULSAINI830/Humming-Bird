@@ -19,7 +19,7 @@ async function getClient() {
   if (!clientPromise) {
     if (!loggedDatabaseHost) {
       loggedDatabaseHost = true;
-      console.log(`Hummingbird Postgres connecting to ${databaseHostForLog()}`);
+      console.log(`Aimate Postgres connecting to ${databaseHostForLog()}`);
     }
 
     const client = new Client({

@@ -1,0 +1,12 @@
+<svg width="72" height="72" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="aimateMarkClip">
+      <circle cx="36" cy="36" r="31"/>
+    </clipPath>
+    <filter id="markShadow" x="0" y="0" width="72" height="72" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000142" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+  <circle cx="36" cy="36" r="31" fill="#FFF7EA" filter="url(#markShadow)"/>
+  <image href="/app/aimate-robot.png" x="5" y="5" width="62" height="62" preserveAspectRatio="xMidYMid meet" clip-path="url(#aimateMarkClip)"/>
+</svg>

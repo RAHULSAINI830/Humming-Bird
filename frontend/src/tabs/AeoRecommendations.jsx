@@ -34,7 +34,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
         body: '{}'
       });
       onChange(result);
-      setMessage('What’s Next plan generated from saved Hummingbird AI analysis.');
+      setMessage('What’s Next plan generated from saved Aimate analysis.');
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -100,7 +100,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
           <div className="aeo-loading-card">
             <span><SettingsIcon name="sparkles" /></span>
             <h2>Building your next-best actions</h2>
-            <p>Hummingbird AI is reading saved analysis, prompt checks, competitor gaps, and citation signals.</p>
+            <p>Aimate is reading saved analysis, prompt checks, competitor gaps, and citation signals.</p>
             <div className="loading-bar"><span /></div>
           </div>
         </div>
@@ -111,7 +111,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
           <div>
             <p className="eyebrow">Ready when your tracking data is ready</p>
             <h2>Generate a real AEO focus plan after checks are saved.</h2>
-            <p>Hummingbird will use your stored AI business analysis, checked prompts, competitor mentions, and citation recommendations. No mock data is used.</p>
+            <p>Aimate will use your stored AI business analysis, checked prompts, competitor mentions, and citation recommendations. No mock data is used.</p>
             <div className="aeo-readiness">
               <div>
                 <span>Data readiness</span>
@@ -169,7 +169,7 @@ export default function AeoRecommendations({ data, onChange, workspace, goTo }) 
           <div className="aeo-section-intro">
             <div>
               <p className="eyebrow">Where to focus</p>
-              <h2>Priority moves ranked by Hummingbird AI from your saved data</h2>
+              <h2>Priority moves ranked by Aimate from your saved data</h2>
             </div>
             <span>{priorities.length} focus areas</span>
           </div>

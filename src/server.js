@@ -40,6 +40,9 @@ const {
   createDeveloperHelpRequest,
   listDeveloperHelpRequests,
   listCompanyPrompts,
+  createPromptResearchHistoryItems,
+  listPromptResearchHistory,
+  markPromptResearchHistoryIncluded,
   listCompanyCompetitors,
   addCompanyPrompt,
   addCompanyCompetitor,
@@ -74,7 +77,12 @@ const {
   listAllUsersForDeveloper,
   listWorkspaceAccessForDeveloper,
   getPlatformStats,
-  deleteCompany
+  deleteCompany,
+  createNotification,
+  listNotificationsForUser,
+  markNotificationRead,
+  listDeveloperNotifications,
+  incrementRateLimitCounter
 } = require('./db');
 const { hashPassword, verifyPassword } = require('./auth');
 const AIService = require('./services/ai/ai-service');
@@ -82,11 +90,13 @@ const AIService = require('./services/ai/ai-service');
 const PORT = Number(process.env.PORT || 3000);
 const SESSION_COOKIE_NAME = 'hbsid';
 const SESSION_SECRET =
+  process.env.AIMATE_SESSION_SECRET ||
   process.env.HUMMINGBIRD_SESSION_SECRET ||
   process.env.SESSION_SECRET ||
+  process.env.AIMATE_DEVELOPER_PASSWORD ||
   process.env.HUMMINGBIRD_DEVELOPER_PASSWORD ||
   process.env.RANGO_DEVELOPER_PASSWORD ||
-  'hummingbird-local-development-secret';
+  'aimate-local-development-secret';
 const BASE_ASSIGNABLE_USER_ROLES = [
   'Marketing Manager',
   'Operations Manager',
@@ -295,6 +305,30 @@ function safeErrorDetail(error) {
   };
 }
 
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket?.remoteAddress || 'unknown';
+}
+
+function enforceRateLimit(res, key, windowSeconds, max) {
+  const count = incrementRateLimitCounter(key, windowSeconds);
+
+  if (count > max) {
+    res.setHeader('Retry-After', String(windowSeconds));
+    sendJson(res, { error: 'Too many requests. Please slow down and try again shortly.' }, 429);
+    return false;
+  }
+
+  return true;
+}
+
+const AI_RATE_LIMIT_WINDOW_SECONDS = 3600;
+const AI_RATE_LIMIT_MAX_PER_COMPANY = 40;
+
+function enforceAiRateLimit(res, companyId) {
+  return enforceRateLimit(res, `ai:company:${companyId}`, AI_RATE_LIMIT_WINDOW_SECONDS, AI_RATE_LIMIT_MAX_PER_COMPANY);
+}
+
 function signupIsClosed() {
   return SIGNUP_MODE === 'closed' || SIGNUP_MODE === 'disabled';
 }
@@ -310,7 +344,7 @@ function emailDomain(email) {
 function validateSignupGate(body, email) {
   if (signupIsClosed()) {
     return {
-      error: 'Public signup is currently closed. Please ask the Hummingbird team for access.',
+      error: 'Public signup is currently closed. Please ask the Aimate team for access.',
       errors: { signup: 'Signup is closed.' },
       status: 403
     };
@@ -321,7 +355,7 @@ function validateSignupGate(body, email) {
 
     if (!SIGNUP_INVITE_CODE || inviteCode !== SIGNUP_INVITE_CODE) {
       return {
-        error: 'Enter a valid invite code to create a Hummingbird workspace.',
+        error: 'Enter a valid invite code to create a Aimate workspace.',
         errors: { inviteCode: 'Valid invite code is required.' },
         status: 403
       };
@@ -346,14 +380,14 @@ function validateSignupGate(body, email) {
 function aiErrorResponse(error, fallbackMessage) {
   const code = String(error?.message || '');
   const messages = {
-    AI_MISSING_KEY: 'Hummingbird AI is not configured yet. Please add the AI API key in production environment variables and redeploy.',
-    AI_AUTH_FAILED: 'Hummingbird AI authentication failed. Please check the AI API key in production environment variables and redeploy.',
-    AI_RATE_LIMITED: 'Hummingbird AI is temporarily rate-limited. Please wait a minute and retry. If this continues, the AI key quota is exhausted or production is still using the old key.',
-    AI_TIMEOUT: 'Hummingbird AI took too long to respond. Please retry.',
-    AI_INVALID_JSON: 'Hummingbird AI returned an unreadable response. Please retry.',
-    AI_NETWORK_ERROR: 'Hummingbird AI could not be reached. Please retry.',
-    AI_SERVER_ERROR: 'Hummingbird AI service is temporarily unavailable. Please retry.',
-    AI_REQUEST_FAILED: 'Hummingbird AI request failed. Please check the AI key, model, and provider quota.',
+    AI_MISSING_KEY: 'Aimate is not configured yet. Please add the AI API key in production environment variables and redeploy.',
+    AI_AUTH_FAILED: 'Aimate authentication failed. Please check the AI API key in production environment variables and redeploy.',
+    AI_RATE_LIMITED: 'Aimate is temporarily rate-limited. Please wait a minute and retry. If this continues, the AI key quota is exhausted or production is still using the old key.',
+    AI_TIMEOUT: 'Aimate took too long to respond. Please retry.',
+    AI_INVALID_JSON: 'Aimate returned an unreadable response. Please retry.',
+    AI_NETWORK_ERROR: 'Aimate could not be reached. Please retry.',
+    AI_SERVER_ERROR: 'Aimate service is temporarily unavailable. Please retry.',
+    AI_REQUEST_FAILED: 'Aimate request failed. Please check the AI key, model, and provider quota.',
     OPENAI_MISSING_KEY: 'ChatGPT is not configured yet. Please add OPENAI_API_KEY in environment variables and redeploy.',
     OPENAI_INVALID_KEY_FORMAT: 'The configured OPENAI_API_KEY does not look like an OpenAI API key. Add a real OpenAI key, not a Claude/Anthropic key.',
     OPENAI_AUTH_FAILED: 'ChatGPT authentication failed. Please check the OpenAI API key in environment variables and redeploy.',
@@ -458,7 +492,7 @@ async function analyzePromptVisibilitySafely(context, prompts, competitors, anal
     } catch (error) {
       errors.push(error);
       console.warn(
-        `Hummingbird AI visibility batch failed: company=${context.access.company_id}, prompts=${batch.length}, code=${error?.message || error?.code || 'unknown'}, providerStatus=${error?.providerStatus || ''}`
+        `Aimate visibility batch failed: company=${context.access.company_id}, prompts=${batch.length}, code=${error?.message || error?.code || 'unknown'}, providerStatus=${error?.providerStatus || ''}`
       );
     }
   }
@@ -524,7 +558,7 @@ function serveFrontend(req, res, url) {
   }
 
   if (url.pathname === '/favicon.ico' || url.pathname === '/favicon.svg') {
-    return serveFile(res, path.join(distDir, url.pathname.slice(1)));
+    return redirect(res, '/app/aimate-mark.png');
   }
 
   if (url.pathname.startsWith('/app/assets/')) {
@@ -931,6 +965,7 @@ function developerAdminPayload() {
     users: listAllUsersForDeveloper(),
     accessRecords: listWorkspaceAccessForDeveloper(),
     helpRequests: listDeveloperHelpRequests(30),
+    notifications: listDeveloperNotifications(50),
     providerControlsByCompany
   };
 }
@@ -1047,7 +1082,7 @@ function dashboardVisibilitySummary(prompts, company, visibilitySnapshots = []) 
   const enriched = enrichPrompts(prompts);
   const snapshotRows = visibilitySnapshots.length ? enrichPrompts(visibilitySnapshots) : [];
   const providerDefinitions = [
-    ['gemini', 'Hummingbird AI', 'gemini_response_summary'],
+    ['gemini', 'Aimate', 'gemini_response_summary'],
     ['chatgpt', 'ChatGPT', 'chatgpt_response_summary'],
     ['claude', 'Claude', 'claude_response_summary'],
     ['perplexity', 'Perplexity', 'perplexity_response_summary']
@@ -1933,7 +1968,7 @@ function geoDashboardPayload(companyId) {
       queryRowsSuppressed: Boolean(isConnected && propertyUrl && !queryRows.length && (countryRows.length || dateRows.length || pageRows.length)),
       missingDataReasons: {
         queries: !queryRows.length && (countryRows.length || dateRows.length || pageRows.length)
-          ? 'Google Search Console can suppress query rows for privacy or low-volume data. Hummingbird syncs query-only rows first to reduce this, but Google may still return zero.'
+          ? 'Google Search Console can suppress query rows for privacy or low-volume data. Aimate syncs query-only rows first to reduce this, but Google may still return zero.'
           : '',
         technical: 'Index coverage, URL inspection, crawl stats, mobile usability, and Core Web Vitals require additional Google APIs beyond Search Analytics.'
       }
@@ -2365,6 +2400,10 @@ async function handleClearGeoData(req, res) {
 }
 
 async function handleLogin(req, res) {
+  if (!enforceRateLimit(res, `login:ip:${getClientIp(req)}`, 300, 8)) {
+    return null;
+  }
+
   const body = await readJson(req);
   const email = normalize(body.email).toLowerCase();
   const password = String(body.password || '');
@@ -2389,6 +2428,10 @@ async function handleLogin(req, res) {
 }
 
 async function handleSignup(req, res) {
+  if (!enforceRateLimit(res, `signup:ip:${getClientIp(req)}`, 3600, 5)) {
+    return null;
+  }
+
   const body = await readJson(req);
   const fullName = normalize(body.fullName);
   const email = normalize(body.email).toLowerCase();
@@ -2582,6 +2625,9 @@ async function handleSetupGenerateAnalysis(req, res) {
   if (!context) return null;
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   let analysis = getLatestCompletedBusinessAnalysis(companyId);
   let analysisId = null;
 
@@ -2609,6 +2655,9 @@ async function handleSetupGenerateCompetitors(req, res) {
   if (!context) return null;
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   const analysis = getLatestCompletedBusinessAnalysis(companyId);
 
   if (!analysis) {
@@ -2640,6 +2689,9 @@ async function handleSetupGeneratePrompts(req, res) {
   if (!context) return null;
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   const analysis = getLatestCompletedBusinessAnalysis(companyId);
 
   if (!analysis) {
@@ -2675,6 +2727,9 @@ async function handleSetupRunChecks(req, res) {
   if (!context) return null;
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   const analysis = getLatestCompletedBusinessAnalysis(companyId);
   const competitors = listCompanyCompetitors(companyId);
   const prompts = listCompanyPrompts(companyId);
@@ -2693,7 +2748,7 @@ async function handleSetupRunChecks(req, res) {
     });
     const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'setup-check',
-      sourceType: 'hummingbird-ai'
+      sourceType: 'aimate-ai'
     });
     logProviderUsageFromResults(companyId, run.runId, visibilityResults);
     return sendJson(res, setupPipelineStatus(companyId));
@@ -2720,7 +2775,7 @@ async function refreshPromptChecksForCompany(companyId) {
   });
   const run = updatePromptVisibility(companyId, visibilityResults, {
     runType: 'daily-refresh',
-    sourceType: 'hummingbird-ai'
+    sourceType: 'aimate-ai'
   });
   logProviderUsageFromResults(companyId, run.runId, visibilityResults);
 
@@ -2815,19 +2870,19 @@ function helpBotProductMap() {
       keywords: ['business analysis', 'business intelligence', 'analysis'],
       title: 'Business Analysis',
       steps: ['Open Business Analysis from the left sidebar.', 'Review the saved business summary, industry, services, audience, service area, and positioning.', 'Use the setup screen or settings refresh flow to regenerate when allowed.'],
-      answer: 'Business Analysis is the saved company intelligence generated from the company profile and website. Hummingbird uses it to discover competitors, generate prompts, and create What’s Next recommendations.'
+      answer: 'Business Analysis is the saved company intelligence generated from the company profile and website. Aimate uses it to discover competitors, generate prompts, and create What’s Next recommendations.'
     },
     {
       keywords: ['prompt', 'prompts', 'add prompt', 'manual prompt'],
       title: 'Prompts',
       steps: ['Open Prompts from the left sidebar.', 'Click a prompt row to view exact AI responses by provider.', 'Use Add prompt for a manual prompt or Research prompts to find new candidate prompts.', 'Prompt creation is capped by the Developer-set workspace prompt limit.'],
-      answer: 'Prompts are buyer-intent AI-search questions that Hummingbird sends to enabled AI providers. They power brand mentions, competitor mentions, citations, and overview charts.'
+      answer: 'Prompts are buyer-intent AI-search questions that Aimate sends to enabled AI providers. They power brand mentions, competitor mentions, citations, and overview charts.'
     },
     {
       keywords: ['competitor', 'competitors'],
       title: 'Competitors',
       steps: ['Open Competitors from the left sidebar.', 'Review tracked competitors and website URLs.', 'Use the add button if your role can manage content and the workspace has competitor slots remaining.'],
-      answer: 'Competitors are the brands Hummingbird checks against your company in AI responses. They help calculate share of voice, competitor mentions, and visibility gaps.'
+      answer: 'Competitors are the brands Aimate checks against your company in AI responses. They help calculate share of voice, competitor mentions, and visibility gaps.'
     },
     {
       keywords: ['citation', 'citations', 'source', 'sources'],
@@ -2845,7 +2900,7 @@ function helpBotProductMap() {
       keywords: ['what next', 'recommendation', 'plan', 'aeo', 'actions'],
       title: 'What’s Next',
       steps: ['Open What’s Next from the left sidebar.', 'Generate a plan after business analysis, competitors, prompts, and AI checks exist.', 'Track each recommended action manually as not started, in progress, done, or blocked.'],
-      answer: 'What’s Next turns saved Hummingbird data into a practical AEO/GEO action plan. It is designed to show what to focus on and why.'
+      answer: 'What’s Next turns saved Aimate data into a practical AEO/GEO action plan. It is designed to show what to focus on and why.'
     },
     {
       keywords: ['settings', 'users', 'workspace', 'company profile', 'refresh', 'regenerate'],
@@ -2900,7 +2955,7 @@ function buildHelpBotAnswer(question, context) {
     return {
       confidence: 'low',
       title: 'Developer request created',
-      answer: 'I could not confidently answer that from the built-in Hummingbird help guide. I sent this question to the Developer team so they can review it.',
+      answer: 'I could not confidently answer that from the built-in Aimate help guide. I sent this question to the Developer team so they can review it.',
       steps: ['A Developer can review this request in the platform request log.', 'Try asking about Dashboard, Prompts, Competitors, Citations, GEO Visibility, What’s Next, Settings, or Developer Admin.'],
       facts,
       shouldCreateDeveloperRequest: true
@@ -2947,7 +3002,7 @@ async function handleHelpChat(req, res) {
 }
 
 function isAuthorizedCronRequest(req) {
-  const cronSecret = process.env.CRON_SECRET || process.env.HUMMINGBIRD_CRON_SECRET;
+  const cronSecret = process.env.CRON_SECRET || process.env.AIMATE_CRON_SECRET || process.env.HUMMINGBIRD_CRON_SECRET;
 
   if (!cronSecret) {
     return false;
@@ -3090,6 +3145,9 @@ async function handleGenerateSetup(req, res) {
   }
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   let analysis = getLatestCompletedBusinessAnalysis(companyId);
   let analysisId = null;
 
@@ -3142,7 +3200,7 @@ async function handleGenerateSetup(req, res) {
       });
       const run = updatePromptVisibility(companyId, visibilityResults, {
         runType: 'setup-check',
-        sourceType: 'hummingbird-ai'
+        sourceType: 'aimate-ai'
       });
       logProviderUsageFromResults(companyId, run.runId, visibilityResults);
     }
@@ -3275,6 +3333,9 @@ async function handleGenerateAeoRecommendations(req, res) {
   }
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   const analysis = getLatestCompletedBusinessAnalysis(companyId);
   const prompts = listCompanyPrompts(companyId);
   const competitors = listCompanyCompetitors(companyId);
@@ -3293,7 +3354,7 @@ async function handleGenerateAeoRecommendations(req, res) {
     return handleAeoRecommendations(req, res);
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Hummingbird AI could not generate the AEO action plan. Please retry.' }, 500);
+    return sendJson(res, { error: 'Aimate could not generate the AEO action plan. Please retry.' }, 500);
   }
 }
 
@@ -3309,6 +3370,7 @@ function handlePrompts(req, res) {
   return sendJson(res, {
     prompts: enrichPrompts(prompts),
     summary: promptSummary(prompts),
+    researchHistory: listPromptResearchHistory(context.access.company_id),
     limits: companyLimitPayload(context.access.company_id),
     canManage: CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)
   });
@@ -3362,8 +3424,12 @@ async function handleAddPrompt(req, res) {
 }
 
 function sanitizeResearchSuggestion(prompt, index = 0) {
+  const rawHistoryId = prompt?.history_id || prompt?.research_history_id || (/^\d+$/.test(String(prompt?.id || '')) ? prompt.id : null);
+  const historyId = Number(rawHistoryId || 0) || null;
+
   return {
-    id: `research-${Date.now()}-${index}`,
+    id: historyId ? String(historyId) : `research-${Date.now()}-${index}`,
+    history_id: historyId,
     prompt_text: normalize(prompt?.prompt_text),
     prompt_category: normalize(prompt?.prompt_category || 'Prompt Research'),
     prompt_intent: normalize(prompt?.prompt_intent || 'Buyer-intent tracking'),
@@ -3382,6 +3448,8 @@ async function handleResearchPrompts(req, res) {
   if (!CONTENT_MANAGEMENT_ROLES.includes(context.access.role_name)) {
     return sendJson(res, { error: 'Access denied' }, 403);
   }
+
+  if (!enforceAiRateLimit(res, context.access.company_id)) return null;
 
   const limits = getCompanyLimits(context.access.company_id);
   const remaining = Number(limits.prompt_remaining || 0);
@@ -3428,16 +3496,36 @@ async function handleResearchPrompts(req, res) {
     const suggestions = (await AIService.researchPrompts(context.access, analysis, existingPrompts, research))
       .map(sanitizeResearchSuggestion)
       .filter((prompt) => prompt.prompt_text && !existingPromptTexts.has(prompt.prompt_text.toLowerCase()))
-      .slice(0, remaining);
+      .slice(0, maxPrompts);
 
     if (!suggestions.length) {
       return sendJson(res, { error: 'No new prompts were found. Try a different research angle.' }, 409);
     }
 
+    const savedSuggestions = createPromptResearchHistoryItems({
+      companyId: context.access.company_id,
+      providerName,
+      research,
+      suggestions
+    }).map((prompt) => ({
+      id: String(prompt.id),
+      history_id: Number(prompt.id),
+      prompt_text: prompt.prompt_text,
+      prompt_category: prompt.prompt_category,
+      prompt_intent: prompt.prompt_intent,
+      why_recommended: prompt.why_recommended,
+      priority: prompt.priority,
+      status: prompt.status,
+      provider_name: prompt.provider_name,
+      created_at: prompt.created_at
+    }));
+
     return sendJson(res, {
       ok: true,
       providerName,
-      suggestions,
+      requestedPrompts: maxPrompts,
+      suggestions: savedSuggestions,
+      researchHistory: listPromptResearchHistory(context.access.company_id),
       limits: companyLimitPayload(context.access.company_id)
     });
   } catch (error) {
@@ -3462,6 +3550,8 @@ async function handleIncludeResearchPrompts(req, res) {
     return sendJson(res, { error: 'Access denied' }, 403);
   }
 
+  if (!enforceAiRateLimit(res, context.access.company_id)) return null;
+
   const body = await readJson(req);
   const providerName = normalize(body.providerName || 'research').toLowerCase();
   const requestedPrompts = Array.isArray(body.prompts) ? body.prompts : [];
@@ -3481,30 +3571,87 @@ async function handleIncludeResearchPrompts(req, res) {
     }, 409);
   }
 
-  const existingPromptTexts = new Set(
-    listCompanyPrompts(context.access.company_id).map((prompt) => String(prompt.prompt_text || '').trim().toLowerCase())
+  const existingPromptTextToId = new Map(
+    listCompanyPrompts(context.access.company_id).map((prompt) => [
+      String(prompt.prompt_text || '').trim().toLowerCase(),
+      Number(prompt.id || 0)
+    ])
   );
+
+  const addedPromptIds = [];
+  const promptIdByHistoryId = {};
 
   normalizedPrompts.forEach((prompt) => {
     const normalizedText = prompt.prompt_text.toLowerCase();
-    if (existingPromptTexts.has(normalizedText)) return;
-    existingPromptTexts.add(normalizedText);
+    const existingPromptId = existingPromptTextToId.get(normalizedText);
+    if (existingPromptId) {
+      if (prompt.history_id) promptIdByHistoryId[prompt.history_id] = existingPromptId;
+      return;
+    }
 
-    addCompanyPrompt({
+    const result = addCompanyPrompt({
       companyId: context.access.company_id,
       promptText: prompt.prompt_text,
       promptCategory: prompt.prompt_category,
       promptIntent: prompt.prompt_intent,
       sourceType: `research-${providerName}`
     });
+
+    const promptId = Number(result?.lastInsertRowid || result?.lastInsertRowID || result?.insertId || 0);
+    if (promptId) addedPromptIds.push(promptId);
+    if (promptId) existingPromptTextToId.set(normalizedText, promptId);
+    if (promptId && prompt.history_id) promptIdByHistoryId[prompt.history_id] = promptId;
   });
 
-  const prompts = listCompanyPrompts(context.access.company_id);
+  markPromptResearchHistoryIncluded(context.access.company_id, promptIdByHistoryId);
+
+  let prompts = listCompanyPrompts(context.access.company_id);
+  let refreshRun = null;
+  let failedBatches = 0;
+  let visibilityError = '';
+  const addedPromptIdSet = new Set(addedPromptIds);
+  const addedPrompts = prompts.filter((prompt) => addedPromptIdSet.has(Number(prompt.id)));
+  const analysis = getLatestCompletedBusinessAnalysis(context.access.company_id);
+  const competitors = listCompanyCompetitors(context.access.company_id);
+
+  if (addedPrompts.length && analysis && competitors.length) {
+    try {
+      const providerControls = getCompanyAiProviderControls(context.access.company_id);
+      const { visibilityResults, failedBatches: failedBatchCount } = await analyzePromptVisibilitySafely(context, addedPrompts, competitors, analysis, {
+        providerControls,
+        refreshType: 'manual',
+        initialProviderBootstrap: true,
+        allowPartialProviderBootstrap: true
+      });
+
+      failedBatches = failedBatchCount;
+
+      if (visibilityResults.length) {
+        refreshRun = updatePromptVisibility(context.access.company_id, visibilityResults, {
+          runType: 'prompt-research-include',
+          sourceType: 'aimate-ai'
+        });
+        logProviderUsageFromResults(context.access.company_id, refreshRun.runId, visibilityResults);
+        prompts = listCompanyPrompts(context.access.company_id);
+      }
+    } catch (error) {
+      console.warn(
+        `Prompt research include visibility check failed: company=${context.access.company_id}, prompts=${addedPrompts.length}, code=${error?.message || error?.code || 'unknown'}, providerStatus=${error?.providerStatus || ''}`
+      );
+      visibilityError = aiErrorResponse(error, 'Prompts were added, but AI responses could not be generated right now.').error;
+    }
+  }
 
   return sendJson(res, {
     ok: true,
+    addedPrompts: addedPrompts.length,
+    linkedHistoryPrompts: Object.keys(promptIdByHistoryId).length,
+    refreshRun,
+    failedBatches,
+    visibilityError,
     prompts: enrichPrompts(prompts),
     summary: promptSummary(prompts),
+    researchHistory: listPromptResearchHistory(context.access.company_id),
     limits: companyLimitPayload(context.access.company_id),
     canManage: true
   }, 201);
@@ -3637,6 +3784,9 @@ async function handleSettingsRefreshVisibility(req, res) {
   }
 
   const companyId = context.access.company_id;
+
+  if (!enforceAiRateLimit(res, companyId)) return null;
+
   const analysis = getLatestCompletedBusinessAnalysis(companyId);
   const competitors = listCompanyCompetitors(companyId);
   const prompts = listCompanyPrompts(companyId).filter((prompt) => prompt.status === 'active');
@@ -3670,7 +3820,7 @@ async function handleSettingsRefreshVisibility(req, res) {
 
     const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'manual-refresh',
-      sourceType: 'hummingbird-ai'
+      sourceType: 'aimate-ai'
     });
     logProviderUsageFromResults(companyId, run.runId, visibilityResults);
 
@@ -3806,6 +3956,40 @@ async function handleRemoveUser(req, res) {
   });
 }
 
+function handleNotifications(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  return sendJson(res, {
+    notifications: listNotificationsForUser(session.userId, 30)
+  });
+}
+
+async function handleNotificationRead(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  const body = await readJson(req);
+  const notificationId = Number(body.notificationId);
+
+  if (!Number.isInteger(notificationId) || notificationId <= 0) {
+    return sendJson(res, { error: 'Select a valid notification.' }, 422);
+  }
+
+  markNotificationRead(session.userId, notificationId);
+
+  return sendJson(res, {
+    ok: true,
+    notifications: listNotificationsForUser(session.userId, 30)
+  });
+}
+
 function handleDeveloperAdmin(req, res) {
   const session = requireSession(req, res);
 
@@ -3820,6 +4004,59 @@ function handleDeveloperAdmin(req, res) {
   return sendJson(res, developerAdminPayload());
 }
 
+async function handleDeveloperCreateNotification(req, res) {
+  const session = requireSession(req, res);
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.isDeveloper) {
+    return sendJson(res, { error: 'Access denied' }, 403);
+  }
+
+  const body = await readJson(req);
+  const title = normalize(body.title);
+  const message = normalize(body.message);
+  const audienceType = normalize(body.audienceType || 'all').toLowerCase();
+  const companyId = Number(body.companyId || 0);
+  const roleName = normalize(body.roleName);
+  const targetUserIds = Array.isArray(body.targetUserIds) ? body.targetUserIds.map(Number) : [];
+  const excludeUserIds = Array.isArray(body.excludeUserIds) ? body.excludeUserIds.map(Number) : [];
+  const allowedAudiences = new Set(['all', 'company', 'role', 'users']);
+  const errors = {};
+
+  if (!title) errors.title = 'Notification title is required.';
+  if (!message) errors.message = 'Notification message is required.';
+  if (!allowedAudiences.has(audienceType)) errors.audienceType = 'Choose a valid audience.';
+  if (audienceType === 'company' && (!Number.isInteger(companyId) || companyId <= 0)) {
+    errors.companyId = 'Choose a company.';
+  }
+  if (audienceType === 'role' && !roleName) {
+    errors.roleName = 'Choose a role.';
+  }
+  if (audienceType === 'users' && !targetUserIds.some((userId) => Number.isInteger(userId) && userId > 0)) {
+    errors.targetUserIds = 'Choose at least one user.';
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please fix the notification details.', errors }, 422);
+  }
+
+  createNotification({
+    title,
+    message,
+    audienceType,
+    companyId: audienceType === 'company' ? companyId : null,
+    roleName: audienceType === 'role' ? roleName : '',
+    targetUserIds: audienceType === 'users' ? targetUserIds : [],
+    excludeUserIds,
+    createdByUserId: session.userId
+  });
+
+  return sendJson(res, { ok: true, ...developerAdminPayload() }, 201);
+}
+
 function handleDeveloperAiDiagnostics(req, res) {
   const session = requireSession(req, res);
 
@@ -3832,7 +4069,7 @@ function handleDeveloperAiDiagnostics(req, res) {
   }
 
   return sendJson(res, AIService.getProviderDiagnostics ? AIService.getProviderDiagnostics() : {
-    provider: 'Hummingbird AI',
+    provider: 'Aimate',
     error: 'Diagnostics unavailable'
   });
 }
@@ -4122,8 +4359,14 @@ async function router(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   try {
+    if (url.pathname.startsWith('/api/') && url.pathname !== '/api/cron/daily-refresh') {
+      if (!enforceRateLimit(res, `ip:${getClientIp(req)}`, 60, 240)) {
+        return null;
+      }
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/health') {
-      return sendJson(res, { ok: true, app: 'hummingbird', layer: 'backend-api', database: dbPath });
+      return sendJson(res, { ok: true, app: 'aimate', layer: 'backend-api', database: dbPath });
     }
 
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/cron/daily-refresh') {
@@ -4292,8 +4535,20 @@ async function router(req, res) {
       return handleUsers(req, res);
     }
 
+    if (req.method === 'GET' && url.pathname === '/api/notifications') {
+      return handleNotifications(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/notifications/read') {
+      return handleNotificationRead(req, res);
+    }
+
     if (req.method === 'GET' && url.pathname === '/api/developer') {
       return handleDeveloperAdmin(req, res);
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/developer/notifications') {
+      return handleDeveloperCreateNotification(req, res);
     }
 
     if (req.method === 'GET' && url.pathname === '/api/developer/ai-diagnostics') {
@@ -4359,7 +4614,7 @@ async function router(req, res) {
 if (require.main === module) {
   const server = http.createServer(router);
   server.listen(PORT, () => {
-    console.log(`Hummingbird backend API running at http://localhost:${PORT}`);
+    console.log(`Aimate backend API running at http://localhost:${PORT}`);
     console.log(`Database: ${dbPath}`);
   });
 }

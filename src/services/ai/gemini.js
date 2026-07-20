@@ -102,13 +102,13 @@ function logAiProviderConfigOnce() {
 
   hasLoggedAiProviderConfig = true;
   console.log(
-    `Hummingbird AI provider configured: model=${geminiModel()}, keyEnding=${geminiKeyEnding()}`
+    `Aimate provider configured: model=${geminiModel()}, keyEnding=${geminiKeyEnding()}`
   );
 }
 
 function getProviderDiagnostics() {
   return {
-    provider: 'Hummingbird AI',
+    provider: 'Aimate',
     model: geminiModel(),
     fallbackModels: geminiFallbackModels(),
     hasApiKey: Boolean(process.env.GEMINI_API_KEY),
@@ -389,7 +389,7 @@ function buildBusinessAnalysisPrompt(company, websiteSnapshot) {
     logo_url: String(company.logo_url || '').trim()
   };
 
-  return `You are Hummingbird, a careful business intelligence analyst.
+  return `You are Aimate, a careful business intelligence analyst.
 
 Analyze this company using the provided company identity and the extracted website content.
 
@@ -494,7 +494,7 @@ function buildPromptGenerationPrompt(company, analysis, websiteSnapshot) {
     }
   };
 
-  return `You are Hummingbird, an AI visibility and GEO/AEO strategist.
+  return `You are Aimate, an AI visibility and GEO/AEO strategist.
 
 Create the top 15 realistic AI search prompts that potential buyers would ask ChatGPT, Gemini, Claude, Perplexity, or another answer engine when looking for solutions related to this company's actual business.
 
@@ -508,7 +508,7 @@ Source priority:
 Critical rules:
 - Prompts must be related to the business category, services, audience, buyer pain points, and buying journey of this specific company.
 - Do not generate prompts that merely ask "what is [company]" or "tell me about [company]" unless that is clearly a buyer-intent query.
-- Do not generate prompts about Hummingbird, SEO software, AI visibility tracking, or this platform unless the company itself sells that.
+- Do not generate prompts about Aimate, SEO software, AI visibility tracking, or this platform unless the company itself sells that.
 - Each prompt must include a specific service, problem, use case, audience, industry, location, or comparison angle from the provided context.
 - If website content is available, prefer service language found on the website.
 - If website content is missing, be conservative and use only the saved analysis fields.
@@ -517,7 +517,7 @@ Prompt goals:
 - Prompts should model what real buyers would ask before buying from or comparing vendors like this company.
 - Include discovery, comparison, problem-aware, solution-aware, local/service-area, pricing/value, and competitor-alternative style prompts where relevant.
 - Prompts must sound like real buyer questions.
-- Do not mention Hummingbird.
+- Do not mention Aimate.
 - Do not invent unsupported services or locations.
 - If location is unknown, keep prompts location-neutral.
 - Keep each prompt clear and client-ready.
@@ -609,7 +609,7 @@ function buildPromptResearchPrompt(company, analysis, websiteSnapshot, existingP
     }
   };
 
-  return `You are Hummingbird, an AI visibility prompt strategist.
+  return `You are Aimate, an AI visibility prompt strategist.
 
 Research new buyer-intent prompts for this company. The user will decide which prompts to include in the workspace.
 
@@ -620,7 +620,7 @@ Rules:
 - Do not return markdown.
 - Do not duplicate or lightly rephrase the current saved prompts.
 - Do not invent unsupported services, locations, industries, or competitors.
-- Prompts must be useful for answer-engine visibility research across ChatGPT, Hummingbird AI, Claude, Perplexity, and similar AI search tools.
+- Prompts must be useful for answer-engine visibility research across ChatGPT, Aimate, Claude, Perplexity, and similar AI search tools.
 - Every prompt must sound like a real buyer, operator, or decision-maker asking for help.
 - Focus on prompts the company should actively track or optimize content for.
 - If the research brief is narrow, prioritize that brief.
@@ -690,7 +690,7 @@ function buildCompetitorDiscoveryPrompt(company, analysis) {
     business_analysis: analysis || {}
   };
 
-  return `You are Hummingbird, a competitive intelligence analyst.
+  return `You are Aimate, a competitive intelligence analyst.
 
 Identify related competitors for this company based on the provided saved company profile and business analysis.
 
@@ -804,9 +804,9 @@ ${JSON.stringify(context, null, 2)}`;
 }
 
 function buildAeoRecommendationsPrompt(context) {
-  return `You are Hummingbird, an AEO/GEO strategy lead.
+  return `You are Aimate, an AEO/GEO strategy lead.
 
-Create a practical "what to do next" action plan for this brand using only saved Hummingbird data.
+Create a practical "what to do next" action plan for this brand using only saved Aimate data.
 
 Use the provided saved business analysis, prompt checks, competitor mentions, citation recommendations, and dashboard metrics.
 
@@ -859,7 +859,7 @@ Return this exact JSON shape:
   ]
 }
 
-Saved Hummingbird data:
+Saved Aimate data:
 ${JSON.stringify(context, null, 2)}`;
 }
 
@@ -928,7 +928,7 @@ function competitorMentionsFor(responseText, competitors) {
       return {
         competitor_name: name,
         website_url: websiteUrl,
-        mention_context: 'Mentioned in Hummingbird AI response.'
+        mention_context: 'Mentioned in Aimate response.'
       };
     })
     .filter(Boolean);
@@ -1102,7 +1102,7 @@ async function callGemini(body, signal) {
 
       if (response.status === 401 || response.status === 403) {
         console.warn(
-          `Hummingbird AI auth failed: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          `Aimate auth failed: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
         );
         throw createAiError('AI_AUTH_FAILED', errorMessage, response.status);
       }
@@ -1112,7 +1112,7 @@ async function callGemini(body, signal) {
 
         if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
           console.warn(
-            `Hummingbird AI switching model after rate limit: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+            `Aimate switching model after rate limit: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, message=${errorMessage.slice(0, 180) || 'no-message'}`
           );
           break;
         }
@@ -1123,7 +1123,7 @@ async function callGemini(body, signal) {
         }
 
         console.warn(
-          `Hummingbird AI rate limited: model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          `Aimate rate limited: model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
         );
         throw lastError;
       }
@@ -1131,13 +1131,13 @@ async function callGemini(body, signal) {
       if (/quota|billing|permission|api key not valid/i.test(errorMessage)) {
         if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
           console.warn(
-            `Hummingbird AI switching model after quota response: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, status=${response.status}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+            `Aimate switching model after quota response: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, status=${response.status}, message=${errorMessage.slice(0, 180) || 'no-message'}`
           );
           break;
         }
 
         console.warn(
-          `Hummingbird AI request rejected: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          `Aimate request rejected: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
         );
         throw createAiError('AI_REQUEST_FAILED', errorMessage, response.status);
       }
@@ -1152,7 +1152,7 @@ async function callGemini(body, signal) {
 
         if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
           console.warn(
-            `Hummingbird AI switching model after server error: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+            `Aimate switching model after server error: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, message=${errorMessage.slice(0, 180) || 'no-message'}`
           );
           break;
         }
@@ -1164,13 +1164,13 @@ async function callGemini(body, signal) {
 
       if (hasFallbackModel && canTryNextGeminiModel(response.status, errorMessage)) {
         console.warn(
-          `Hummingbird AI switching model after request failure: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, status=${response.status}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+          `Aimate switching model after request failure: from=${model}, next=${modelCandidates[modelCandidates.indexOf(model) + 1]}, status=${response.status}, message=${errorMessage.slice(0, 180) || 'no-message'}`
         );
         break;
       }
 
       console.warn(
-        `Hummingbird AI request failed: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
+        `Aimate request failed: status=${response.status}, model=${model}, keyEnding=${geminiKeyEnding()}, message=${errorMessage.slice(0, 180) || 'no-message'}`
       );
       throw lastError;
     }
@@ -1451,8 +1451,8 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
         prompt_id: String(prompt.id),
         brand_mentioned: brandMentioned,
         brand_mention_context: brandMentioned
-          ? 'Mentioned in Hummingbird AI response.'
-          : 'Not mentioned in Hummingbird AI response.',
+          ? 'Mentioned in Aimate response.'
+          : 'Not mentioned in Aimate response.',
         competitor_mentions: competitorMentions,
         recommended_citations: citationRecommendations(company, competitors, competitorMentions),
         ai_response_summary: responseText,

@@ -57,7 +57,7 @@ if (!usePostgres && isVercel && !fs.existsSync(dbPath) && fs.existsSync(bundledS
   try {
     fs.copyFileSync(bundledSeedDbPath, dbPath);
     fs.chmodSync(dbPath, 0o600);
-    console.log('Hummingbird production database initialized from bundled SQLite seed.');
+    console.log('Aimate production database initialized from bundled SQLite seed.');
   } catch (error) {
     console.warn(`Could not initialize production database from bundled seed: ${error.message}`);
   }
@@ -204,6 +204,34 @@ function migrate() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_company_prompts_company_order
       ON company_prompts(company_id, prompt_order);
 
+    CREATE TABLE IF NOT EXISTS prompt_research_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      provider_name TEXT NOT NULL,
+      goal TEXT,
+      service_focus TEXT,
+      audience TEXT,
+      location_focus TEXT,
+      buyer_stage TEXT,
+      notes TEXT,
+      prompt_text TEXT NOT NULL,
+      prompt_category TEXT,
+      prompt_intent TEXT,
+      why_recommended TEXT,
+      priority TEXT,
+      status TEXT NOT NULL DEFAULT 'candidate',
+      included_prompt_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_research_history_company_id
+      ON prompt_research_history(company_id);
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_research_history_status
+      ON prompt_research_history(company_id, status, created_at);
+
     CREATE TABLE IF NOT EXISTS company_competitors (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
@@ -224,7 +252,7 @@ function migrate() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,
       run_type TEXT NOT NULL DEFAULT 'manual',
-      source_type TEXT NOT NULL DEFAULT 'hummingbird-ai',
+      source_type TEXT NOT NULL DEFAULT 'aimate-ai',
       status TEXT NOT NULL DEFAULT 'completed',
       prompts_checked INTEGER NOT NULL DEFAULT 0,
       error_message TEXT,
@@ -326,6 +354,63 @@ function migrate() {
 
     CREATE INDEX IF NOT EXISTS idx_developer_help_requests_status
       ON developer_help_requests(request_status, created_at);
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      audience_type TEXT NOT NULL DEFAULT 'all',
+      company_id INTEGER,
+      role_name TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_user_targets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notification_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(notification_id, user_id),
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_user_exclusions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notification_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(notification_id, user_id),
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_reads (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      notification_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      read_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(notification_id, user_id),
+      FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_notifications_status_created
+      ON notifications(status, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_notification_targets_user
+      ON notification_user_targets(user_id);
+
+    CREATE INDEX IF NOT EXISTS idx_notification_exclusions_user
+      ON notification_user_exclusions(user_id);
+
+    CREATE INDEX IF NOT EXISTS idx_notification_reads_user
+      ON notification_reads(user_id);
 
     CREATE TABLE IF NOT EXISTS aeo_recommendations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -458,6 +543,18 @@ function migrate() {
 
     CREATE INDEX IF NOT EXISTS idx_geo_dimension_snapshots_company_type
       ON geo_dimension_snapshots(company_id, property_url, dimension_type, period_label);
+
+    CREATE TABLE IF NOT EXISTS api_rate_limits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      limit_key TEXT NOT NULL,
+      window_start TEXT NOT NULL,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(limit_key, window_start)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_api_rate_limits_window
+      ON api_rate_limits(window_start);
 
   `);
 
@@ -626,10 +723,10 @@ function normalizeInternalDeveloperWorkspace() {
   db.prepare(`
     UPDATE companies
     SET
-      company_name = 'Hummingbird Internal',
-      website_url = 'https://hummingbird.local',
-      brand_description = 'Internal Hummingbird developer workspace.',
-      target_audience = 'Hummingbird internal team',
+      company_name = 'Aimate Internal',
+      website_url = 'https://aimate.local',
+      brand_description = 'Internal Aimate developer workspace.',
+      target_audience = 'Aimate internal team',
       updated_at = CURRENT_TIMESTAMP
     WHERE company_name = 'Rango Internal'
   `).run();
@@ -647,10 +744,13 @@ function seedDefaultDeveloper() {
     return;
   }
 
-  const password = process.env.HUMMINGBIRD_DEVELOPER_PASSWORD || process.env.RANGO_DEVELOPER_PASSWORD;
+  const password =
+    process.env.AIMATE_DEVELOPER_PASSWORD ||
+    process.env.HUMMINGBIRD_DEVELOPER_PASSWORD ||
+    process.env.RANGO_DEVELOPER_PASSWORD;
 
   if (!password) {
-    console.warn('HUMMINGBIRD_DEVELOPER_PASSWORD is not set. Default Developer user was not created.');
+    console.warn('AIMATE_DEVELOPER_PASSWORD is not set. Default Developer user was not created.');
     return;
   }
 
@@ -674,7 +774,7 @@ function seedDefaultDeveloper() {
       user = { id: Number(result.lastInsertRowid) };
     }
 
-    let company = db.prepare('SELECT id FROM companies WHERE company_name = ?').get('Hummingbird Internal');
+    let company = db.prepare('SELECT id FROM companies WHERE company_name = ?').get('Aimate Internal');
 
     if (!company) {
       company = db.prepare('SELECT id FROM companies WHERE company_name = ?').get('Rango Internal');
@@ -697,16 +797,16 @@ function seedDefaultDeveloper() {
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
       `).run(
-        'Hummingbird Internal',
-        'https://hummingbird.local',
+        'Aimate Internal',
+        'https://aimate.local',
         '',
         'SaaS',
         'Global',
         'United States',
         'Platform administration',
         '',
-        'Internal Hummingbird developer workspace.',
-        'Hummingbird internal team'
+        'Internal Aimate developer workspace.',
+        'Aimate internal team'
       );
       company = { id: Number(result.lastInsertRowid) };
     } else {
@@ -720,10 +820,10 @@ function seedDefaultDeveloper() {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(
-        'Hummingbird Internal',
-        'https://hummingbird.local',
-        'Internal Hummingbird developer workspace.',
-        'Hummingbird internal team',
+        'Aimate Internal',
+        'https://aimate.local',
+        'Internal Aimate developer workspace.',
+        'Aimate internal team',
         company.id
       );
     }
@@ -734,7 +834,7 @@ function seedDefaultDeveloper() {
     `).run(user.id, company.id, developerRole.id);
 
     db.exec('COMMIT');
-    console.log('Default Developer user created from HUMMINGBIRD_DEVELOPER_PASSWORD.');
+    console.log('Default Developer user created from AIMATE_DEVELOPER_PASSWORD.');
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;
@@ -1306,7 +1406,7 @@ function updateCompanyAutomationPolicy(companyId, policy) {
 const DEFAULT_AI_PROVIDER_CONTROLS = [
   {
     provider_name: 'gemini',
-    label: 'Hummingbird AI',
+    label: 'Aimate',
     status: 'enabled',
     daily_prompt_limit: 100,
     monthly_prompt_limit: 3000,
@@ -1858,6 +1958,88 @@ function addCompanyPrompt({ companyId, promptText, promptCategory = 'Manual', pr
   );
 }
 
+function createPromptResearchHistoryItems({ companyId, providerName = 'gemini', research = {}, suggestions = [] }) {
+  const insertHistory = db.prepare(`
+    INSERT INTO prompt_research_history (
+      company_id,
+      provider_name,
+      goal,
+      service_focus,
+      audience,
+      location_focus,
+      buyer_stage,
+      notes,
+      prompt_text,
+      prompt_category,
+      prompt_intent,
+      why_recommended,
+      priority,
+      status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'candidate')
+  `);
+  const getHistory = db.prepare(`
+    SELECT *
+    FROM prompt_research_history
+    WHERE id = ?
+      AND company_id = ?
+    LIMIT 1
+  `);
+  const rows = [];
+
+  suggestions.forEach((prompt) => {
+    if (!prompt?.prompt_text) return;
+
+    const result = insertHistory.run(
+      companyId,
+      providerName,
+      research.goal || '',
+      research.serviceFocus || '',
+      research.audience || '',
+      research.locationFocus || '',
+      research.buyerStage || '',
+      research.notes || '',
+      prompt.prompt_text,
+      prompt.prompt_category || 'Prompt Research',
+      prompt.prompt_intent || 'Buyer-intent tracking',
+      prompt.why_recommended || 'Recommended by prompt research.',
+      prompt.priority || 'Medium'
+    );
+    const historyId = Number(result?.lastInsertRowid || result?.lastInsertRowID || result?.insertId || 0);
+    if (historyId) rows.push(getHistory.get(historyId, companyId));
+  });
+
+  return rows.filter(Boolean);
+}
+
+function listPromptResearchHistory(companyId, limit = 80) {
+  return db.prepare(`
+    SELECT *
+    FROM prompt_research_history
+    WHERE company_id = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `).all(companyId, Math.max(1, Math.min(Number(limit) || 80, 200)));
+}
+
+function markPromptResearchHistoryIncluded(companyId, promptIdByHistoryId = {}) {
+  const updateHistory = db.prepare(`
+    UPDATE prompt_research_history
+    SET status = 'included',
+        included_prompt_id = ?,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE company_id = ?
+      AND id = ?
+  `);
+
+  Object.entries(promptIdByHistoryId).forEach(([historyId, promptId]) => {
+    const numericHistoryId = Number(historyId);
+    const numericPromptId = Number(promptId);
+    if (!numericHistoryId || !numericPromptId) return;
+    updateHistory.run(numericPromptId, companyId, numericHistoryId);
+  });
+}
+
 function removeCompanyPrompt(companyId, promptId) {
   return db.prepare(`
     DELETE FROM company_prompts
@@ -2001,7 +2183,7 @@ function upsertCompanyCompetitors(companyId, competitors, sourceType = 'gemini')
 
 function updatePromptVisibility(companyId, results, options = {}) {
   const runType = options.runType || 'manual';
-  const sourceType = options.sourceType || 'hummingbird-ai';
+  const sourceType = options.sourceType || 'aimate-ai';
   const createRun = db.prepare(`
     INSERT INTO prompt_visibility_runs (
       company_id,
@@ -2567,6 +2749,170 @@ function clearGeoSnapshots(companyId, propertyUrl = '') {
   }
 }
 
+function normalizeIdList(values) {
+  return Array.from(new Set((Array.isArray(values) ? values : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0)));
+}
+
+function createNotification({
+  title,
+  message,
+  audienceType = 'all',
+  companyId = null,
+  roleName = '',
+  targetUserIds = [],
+  excludeUserIds = [],
+  createdByUserId = null
+}) {
+  const normalizedTargets = normalizeIdList(targetUserIds);
+  const normalizedExclusions = normalizeIdList(excludeUserIds);
+
+  try {
+    db.exec('BEGIN');
+
+    const result = db.prepare(`
+      INSERT INTO notifications (
+        title,
+        message,
+        audience_type,
+        company_id,
+        role_name,
+        status,
+        created_by_user_id
+      )
+      VALUES (?, ?, ?, ?, ?, 'active', ?)
+    `).run(
+      title,
+      message,
+      audienceType,
+      companyId || null,
+      roleName || null,
+      createdByUserId || null
+    );
+
+    const notificationId = Number(result.lastInsertRowid);
+    const insertTarget = db.prepare(`
+      INSERT OR IGNORE INTO notification_user_targets (notification_id, user_id)
+      VALUES (?, ?)
+    `);
+    const insertExclusion = db.prepare(`
+      INSERT OR IGNORE INTO notification_user_exclusions (notification_id, user_id)
+      VALUES (?, ?)
+    `);
+
+    normalizedTargets.forEach((userId) => insertTarget.run(notificationId, userId));
+    normalizedExclusions.forEach((userId) => insertExclusion.run(notificationId, userId));
+
+    db.exec('COMMIT');
+    return notificationId;
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // Ignore rollback failures and rethrow the original error.
+    }
+
+    throw error;
+  }
+}
+
+function notificationTargetUserIds(notificationId) {
+  return db.prepare(`
+    SELECT user_id
+    FROM notification_user_targets
+    WHERE notification_id = ?
+  `).all(notificationId).map((row) => Number(row.user_id));
+}
+
+function notificationExcludedUserIds(notificationId) {
+  return db.prepare(`
+    SELECT user_id
+    FROM notification_user_exclusions
+    WHERE notification_id = ?
+  `).all(notificationId).map((row) => Number(row.user_id));
+}
+
+function listNotificationsForUser(userId, limit = 30) {
+  const companies = getUserCompanies(userId);
+  const companyIds = new Set(companies.map((company) => Number(company.company_id)));
+  const roleNames = new Set(companies.map((company) => company.role_name).filter(Boolean));
+  const rows = db.prepare(`
+    SELECT
+      n.*,
+      u.full_name AS created_by_name,
+      nr.read_at
+    FROM notifications n
+    LEFT JOIN users u ON u.id = n.created_by_user_id
+    LEFT JOIN notification_reads nr
+      ON nr.notification_id = n.id
+      AND nr.user_id = ?
+    WHERE n.status = 'active'
+    ORDER BY n.created_at DESC, n.id DESC
+    LIMIT 200
+  `).all(userId);
+  const visible = [];
+
+  rows.forEach((notification) => {
+    const excluded = new Set(notificationExcludedUserIds(notification.id));
+
+    if (excluded.has(Number(userId))) {
+      return;
+    }
+
+    const targets = notificationTargetUserIds(notification.id);
+    const audienceType = notification.audience_type || 'all';
+    const isVisible =
+      audienceType === 'all' ||
+      (audienceType === 'company' && companyIds.has(Number(notification.company_id))) ||
+      (audienceType === 'role' && roleNames.has(notification.role_name)) ||
+      (audienceType === 'users' && targets.includes(Number(userId)));
+
+    if (isVisible) {
+      visible.push({
+        id: notification.id,
+        title: notification.title,
+        message: notification.message,
+        audience_type: notification.audience_type,
+        company_id: notification.company_id,
+        role_name: notification.role_name,
+        created_by_name: notification.created_by_name || 'Aimate team',
+        created_at: notification.created_at,
+        read_at: notification.read_at || null,
+        is_read: Boolean(notification.read_at)
+      });
+    }
+  });
+
+  return visible.slice(0, Math.max(1, Number(limit) || 30));
+}
+
+function markNotificationRead(userId, notificationId) {
+  return db.prepare(`
+    INSERT INTO notification_reads (notification_id, user_id, read_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(notification_id, user_id) DO UPDATE SET
+      read_at = CURRENT_TIMESTAMP
+  `).run(notificationId, userId);
+}
+
+function listDeveloperNotifications(limit = 50) {
+  return db.prepare(`
+    SELECT
+      n.*,
+      c.company_name,
+      u.full_name AS created_by_name,
+      (SELECT COUNT(*) FROM notification_user_targets nt WHERE nt.notification_id = n.id) AS target_count,
+      (SELECT COUNT(*) FROM notification_user_exclusions ne WHERE ne.notification_id = n.id) AS exclusion_count,
+      (SELECT COUNT(*) FROM notification_reads nr WHERE nr.notification_id = n.id) AS read_count
+    FROM notifications n
+    LEFT JOIN companies c ON c.id = n.company_id
+    LEFT JOIN users u ON u.id = n.created_by_user_id
+    ORDER BY n.created_at DESC, n.id DESC
+    LIMIT ?
+  `).all(Math.max(1, Number(limit) || 50));
+}
+
 function createUserCompanyWorkspace({ user, company }) {
   const businessOwnerRole = db
     .prepare('SELECT id FROM roles WHERE role_name = ?')
@@ -2629,6 +2975,24 @@ function createUserCompanyWorkspace({ user, company }) {
   }
 }
 
+function incrementRateLimitCounter(limitKey, windowSeconds) {
+  const windowMs = Math.max(1, Number(windowSeconds) || 60) * 1000;
+  const windowStart = new Date(Math.floor(Date.now() / windowMs) * windowMs).toISOString();
+  const row = db.prepare(`
+    INSERT INTO api_rate_limits (limit_key, window_start, request_count)
+    VALUES (?, ?, 1)
+    ON CONFLICT (limit_key, window_start) DO UPDATE SET request_count = api_rate_limits.request_count + 1
+    RETURNING request_count
+  `).get(limitKey, windowStart);
+
+  if (Math.random() < 0.02) {
+    const cutoff = new Date(Date.now() - windowMs * 10).toISOString();
+    db.prepare('DELETE FROM api_rate_limits WHERE window_start < ?').run(cutoff);
+  }
+
+  return Number(row?.request_count || 0);
+}
+
 module.exports = {
   db,
   dbPath,
@@ -2688,6 +3052,9 @@ module.exports = {
   listCompanyPrompts,
   getCompanyPromptById,
   addCompanyPrompt,
+  createPromptResearchHistoryItems,
+  listPromptResearchHistory,
+  markPromptResearchHistoryIncluded,
   removeCompanyPrompt,
   replaceCompanyPrompts,
   listCompanyCompetitors,
@@ -2710,7 +3077,12 @@ module.exports = {
   listGeoQuerySnapshots,
   listGeoDimensionSnapshots,
   clearGeoSnapshots,
+  createNotification,
+  listNotificationsForUser,
+  markNotificationRead,
+  listDeveloperNotifications,
   updateCompanyProfile,
   completeCompanyOnboarding,
-  createUserCompanyWorkspace
+  createUserCompanyWorkspace,
+  incrementRateLimitCounter
 };

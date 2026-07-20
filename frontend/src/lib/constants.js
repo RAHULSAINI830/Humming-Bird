@@ -1,4 +1,5 @@
-export const HUMMINGBIRD_LOGO = '/app/hummingbird-logo.svg';
+export const AIMATE_LOGO = '/app/aimate-logo.png';
+export const AIMATE_MARK = '/app/aimate-mark.png';
 
 export const navItems = [
   ['Dashboard', 'dashboard', '◆'],
@@ -21,7 +22,8 @@ export const geoSubTabs = [
 ];
 
 export const DEFAULT_ACTIVE_VIEW = 'dashboard';
-export const ACTIVE_VIEW_STORAGE_KEY = 'hummingbird.activeView';
+export const ACTIVE_VIEW_STORAGE_KEY = 'aimate.activeView';
+export const LEGACY_ACTIVE_VIEW_STORAGE_KEY = 'hummingbird.activeView';
 export const allowedViewKeys = new Set([...navItems.map(([, view]) => view), 'developer']);
 
 export function readInitialActiveView() {
@@ -30,7 +32,9 @@ export function readInitialActiveView() {
   const hashView = window.location.hash.replace('#', '').trim();
   const params = new URLSearchParams(window.location.search);
   const geoStatus = params.get('geo');
-  const storedView = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY);
+  const storedView =
+    window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY) ||
+    window.localStorage.getItem(LEGACY_ACTIVE_VIEW_STORAGE_KEY);
 
   if (geoStatus) return 'geo';
   if (allowedViewKeys.has(hashView)) return hashView;

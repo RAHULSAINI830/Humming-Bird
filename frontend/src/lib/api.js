@@ -18,7 +18,7 @@ export async function api(path, options = {}) {
     error.status = response.status;
 
     if (response.status === 401 && path !== '/api/session' && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('hummingbird:auth-expired'));
+      window.dispatchEvent(new CustomEvent('aimate:auth-expired'));
     }
 
     throw error;

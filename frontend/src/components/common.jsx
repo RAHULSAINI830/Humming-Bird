@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { HUMMINGBIRD_LOGO, navItems } from '../lib/constants';
+import { AIMATE_LOGO, navItems } from '../lib/constants';
 import { api } from '../lib/api';
 
 export function BrandLogo({ centered = false }) {
   return (
     <span className={`brand-logo ${centered ? 'centered' : ''}`}>
-      <img src={HUMMINGBIRD_LOGO} alt="Hummingbird" />
+      <img src={AIMATE_LOGO} alt="Aimate" />
     </span>
   );
 }
@@ -36,7 +36,7 @@ export function LoadingScreen() {
           </div>
         </div>
         <div className="loading-copy">
-          <p className="eyebrow">Hummingbird AI</p>
+          <p className="eyebrow">Aimate</p>
           <h1>Opening your intelligence cockpit</h1>
           <p>Loading session, workspace permissions, provider controls, and saved visibility signals from the backend.</p>
         </div>
@@ -57,7 +57,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
     { key: 'analysis', label: 'Business analysis', complete: false, description: 'Analyze company website and business profile.' },
     { key: 'competitors', label: 'Competitor discovery', complete: false, description: 'Discover related companies for comparison.' },
     { key: 'prompts', label: 'Prompt generation', complete: false, description: 'Create buyer-intent AI search prompts.' },
-    { key: 'checks', label: 'AI visibility checks', complete: false, description: 'Send prompts to Hummingbird AI and save responses.' }
+    { key: 'checks', label: 'AI visibility checks', complete: false, description: 'Send prompts to Aimate and save responses.' }
   ];
   const completed = steps.filter((step) => step.complete).length;
   const percent = Math.round((completed / steps.length) * 100);
@@ -128,8 +128,8 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
             <p className="eyebrow">Workspace preparation</p>
             <h1>Building your AI visibility platform</h1>
             <p>
-              Before showing the dashboard, Hummingbird generates real business intelligence, competitors,
-              prompts, and Hummingbird AI visibility checks for <strong>{session.selectedCompanyName}</strong>.
+              Before showing the dashboard, Aimate generates real business intelligence, competitors,
+              prompts, and Aimate visibility checks for <strong>{session.selectedCompanyName}</strong>.
             </p>
 
             <div className="setup-company-card">
@@ -144,7 +144,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
             <div className={`setup-progress-track ${loading ? 'is-loading' : ''}`}>
               <span style={{ width: `${loading ? Math.max(percent, 18) : percent}%` }} />
             </div>
-            <small>{loading ? 'Generating with Hummingbird AI… this can take a little while.' : `${percent}% ready`}</small>
+            <small>{loading ? 'Generating with Aimate… this can take a little while.' : `${percent}% ready`}</small>
 
             {error ? <div className="notice">{error}</div> : null}
             {loading ? (
@@ -303,12 +303,12 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               </div>
               <h2>Ready to build your first overview</h2>
               <p>
-                Hummingbird will now send each saved prompt to every configured AI provider for the first run.
+                Aimate will now send each saved prompt to every configured AI provider for the first run.
                 This first setup run does not require Developer refresh permission. Future regenerations will follow
                 the limits and permissions configured in Developer Admin.
               </p>
               <div className="setup-check-provider-grid">
-                <span>Hummingbird AI</span>
+                <span>Aimate</span>
                 <span>ChatGPT if connected</span>
                 <span>Claude if connected</span>
                 <span>Perplexity if connected</span>
@@ -374,12 +374,12 @@ export function AuthScreen({ mode, setMode, onAuthenticated }) {
         <div className="brand-row">
           <BrandLogo />
         </div>
-        <h1>{isSignup ? 'Create your workspace.' : 'Welcome back to Hummingbird.'}</h1>
+        <h1>{isSignup ? 'Create your workspace.' : 'Welcome back to Aimate.'}</h1>
         <p>
           Track AI visibility, prompts, competitor mentions, citations, and business intelligence from one premium workspace.
         </p>
         <div className="hero-stats">
-          <span>Hummingbird AI-ready</span>
+          <span>Aimate-ready</span>
           <span>Workspace access</span>
           <span>Role security</span>
         </div>
@@ -395,8 +395,8 @@ export function AuthScreen({ mode, setMode, onAuthenticated }) {
         <h2>{isSignup ? 'Start with your company' : 'Login to your dashboard'}</h2>
         <p className="muted">
           {isSignup
-            ? 'Create your Hummingbird workspace. You will become the Business Owner.'
-            : 'Use your Hummingbird account to continue your AI visibility workflow.'}
+            ? 'Create your Aimate workspace. You will become the Business Owner.'
+            : 'Use your Aimate account to continue your AI visibility workflow.'}
         </p>
 
         {error ? <div className="error-box">{error}</div> : null}
@@ -501,7 +501,7 @@ export function IconButton({ label, onClick }) {
 }
 
 export const providerConfigs = [
-  { key: 'gemini', label: 'Hummingbird AI', field: 'gemini_response_summary', connected: true, logoUrl: HUMMINGBIRD_LOGO },
+  { key: 'gemini', label: 'Aimate', field: 'gemini_response_summary', connected: true, logoUrl: AIMATE_LOGO },
   { key: 'chatgpt', label: 'ChatGPT', field: 'chatgpt_response_summary', connected: false, logoUrl: 'https://chatgpt.com' },
   { key: 'claude', label: 'Claude', field: 'claude_response_summary', connected: false, logoUrl: 'https://claude.ai' },
   { key: 'perplexity', label: 'Perplexity', field: 'perplexity_response_summary', connected: false, logoUrl: 'https://perplexity.ai' }
@@ -509,8 +509,8 @@ export const providerConfigs = [
 
 export function displayAiSource(source) {
   const normalized = String(source || '').trim().toLowerCase();
-  if (!normalized) return 'Hummingbird AI';
-  if (normalized === 'gemini' || normalized === 'google-gemini') return 'Hummingbird AI';
+  if (!normalized) return 'Aimate';
+  if (normalized === 'gemini' || normalized === 'google-gemini') return 'Aimate';
   return source;
 }
 
@@ -595,7 +595,7 @@ export function EmptyInline({ title, text }) {
   );
 }
 
-export function TabLoading({ title = 'Loading workspace data', text = 'Hummingbird AI is preparing the latest saved signals from your database.' }) {
+export function TabLoading({ title = 'Loading workspace data', text = 'Aimate is preparing the latest saved signals from your database.' }) {
   return (
     <section className="page-content tab-loading-wrap">
       <article className="tab-loading-card">
@@ -634,24 +634,24 @@ function loadingLabel(action) {
     generate: 'Preparing workspace intelligence'
   };
 
-  return labels[action] || 'Hummingbird AI is working';
+  return labels[action] || 'Aimate is working';
 }
 
 function setupLoadingDetails(action) {
   const details = {
     analysis: {
       title: 'Business analysis is the next step',
-      text: 'Hummingbird will read the saved company basics and generate the business profile before anything else.',
+      text: 'Aimate will read the saved company basics and generate the business profile before anything else.',
       providers: ['Profile', 'Website', 'Market']
     },
     'generate-analysis': {
       title: 'Generating business intelligence',
       text: 'Reading the company name, website, and logo, then saving structured business intelligence to the database.',
-      providers: ['Hummingbird AI', 'Website', 'Database']
+      providers: ['Aimate', 'Website', 'Database']
     },
     competitors: {
       title: 'Competitor discovery is next',
-      text: 'Review the business analysis, then Hummingbird will discover related competitors for this workspace.',
+      text: 'Review the business analysis, then Aimate will discover related competitors for this workspace.',
       providers: ['Analysis', 'Market', 'Competitors']
     },
     'generate-competitors': {
@@ -677,14 +677,14 @@ function setupLoadingDetails(action) {
     'run-checks': {
       title: 'Generating your overview data',
       text: 'Sending prompts to every configured AI provider for the first run, detecting brand mentions, competitors, citations, and saving the comparison snapshot.',
-      providers: ['Hummingbird AI', 'ChatGPT', 'Claude', 'Perplexity']
+      providers: ['Aimate', 'ChatGPT', 'Claude', 'Perplexity']
     }
   };
 
   return details[action] || {
     title: loadingLabel(action),
-    text: 'Hummingbird AI is writing clean results back to your database.',
-    providers: ['Hummingbird AI', 'Database', 'Dashboard']
+    text: 'Aimate is writing clean results back to your database.',
+    providers: ['Aimate', 'Database', 'Dashboard']
   };
 }
 

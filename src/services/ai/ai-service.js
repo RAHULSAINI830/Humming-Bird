@@ -59,7 +59,7 @@ function buildPromptResearchPrompt(company, analysis, existingPrompts, research)
     }
   };
 
-  return `You are Hummingbird, an AI visibility prompt strategist.
+  return `You are Aimate, an AI visibility prompt strategist.
 
 Research new buyer-intent prompts for this company. The user will decide which prompts to include in the workspace.
 
@@ -68,7 +68,7 @@ Rules:
 - Do not return markdown.
 - Do not duplicate or lightly rephrase current saved prompts.
 - Do not invent unsupported services, locations, industries, or competitors.
-- Prompts must be useful for answer-engine visibility research across ChatGPT, Hummingbird AI, Claude, Perplexity, and similar AI search tools.
+- Prompts must be useful for answer-engine visibility research across ChatGPT, Aimate, Claude, Perplexity, and similar AI search tools.
 - Every prompt must sound like a real buyer, operator, or decision-maker asking for help.
 - Focus on prompts the company should actively track or optimize content for.
 - Use the research brief to shape the angle.
@@ -317,6 +317,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
   const providerControls = options.providerControls || [];
   const refreshType = options.refreshType || 'manual';
   const initialProviderBootstrap = Boolean(options.initialProviderBootstrap);
+  const allowPartialProviderBootstrap = Boolean(options.allowPartialProviderBootstrap);
   const promptsFor = (providerName) => initialProviderBootstrap
     ? prompts
     : promptSliceForProvider(prompts, providerControls, providerName);
@@ -383,13 +384,13 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     }
   }
 
-  if (initialProviderBootstrap && failedProviders.length) {
+  if (initialProviderBootstrap && failedProviders.length && !allowPartialProviderBootstrap) {
     const error = errors[0] || new Error('AI_PROVIDER_BOOTSTRAP_FAILED');
     error.failedProviders = Array.from(new Set(failedProviders));
     throw error;
   }
 
-  if (initialProviderBootstrap) {
+  if (initialProviderBootstrap && !allowPartialProviderBootstrap) {
     const expectedProviderCount = configuredProviderNames().length;
     const completePromptCount = (results || []).filter((result) => {
       const saved = [
@@ -422,11 +423,11 @@ async function generateAeoRecommendations(context) {
 }
 
 function getProviderDiagnostics() {
-  const hummingbird = GeminiProvider.getProviderDiagnostics();
+  const aimate = GeminiProvider.getProviderDiagnostics();
 
   return {
-    ...hummingbird,
-    hummingbird,
+    ...aimate,
+    aimate,
     openai: OpenAIProvider.getProviderDiagnostics(),
     perplexity: PerplexityProvider.getProviderDiagnostics(),
     claude: ClaudeProvider.getProviderDiagnostics()

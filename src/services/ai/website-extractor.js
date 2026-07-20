@@ -167,7 +167,7 @@ async function fetchWithTimeout(url, timeoutMs = DEFAULT_TIMEOUT) {
       signal: controller.signal,
       headers: {
         Accept: 'text/html,application/xhtml+xml',
-        'User-Agent': 'HummingbirdBot/0.1 (+https://hummingbird.local; business analysis)'
+        'User-Agent': 'AimateBot/0.1 (+https://aimate.local; business analysis)'
       },
       redirect: 'follow'
     });

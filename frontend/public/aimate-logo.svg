@@ -1,10 +1,11 @@
 <svg width="228" height="64" viewBox="0 0 228 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="228" height="64" fill="none"/>
-  <clipPath id="robotMarkClip">
-    <circle cx="32" cy="32" r="27"/>
-  </clipPath>
+  <defs>
+    <clipPath id="aimateLogoMarkClip">
+      <circle cx="32" cy="32" r="27"/>
+    </clipPath>
+  </defs>
   <circle cx="32" cy="32" r="27" fill="#FFF7EA"/>
-  <image href="/app/aimate-robot.png" x="0" y="-1" width="64" height="64" preserveAspectRatio="xMidYMid slice" clip-path="url(#robotMarkClip)"/>
+  <image href="/app/aimate-robot.png" x="5" y="5" width="54" height="54" preserveAspectRatio="xMidYMid meet" clip-path="url(#aimateLogoMarkClip)"/>
   <text x="72" y="43"
         font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
         font-size="34"

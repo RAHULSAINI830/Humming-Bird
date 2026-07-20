@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
+import { AIMATE_MARK } from '../lib/constants';
 
 const starterQuestions = [
   'How does Prompt Research work?',
@@ -21,8 +22,8 @@ export default function HelpBot({ session }) {
   const [messages, setMessages] = useState([
     {
       role: 'bot',
-      title: 'Hummingbird help',
-      text: 'I can guide you through Hummingbird: where to find data, what a metric means, and which tab to use next. If I cannot answer, I’ll send a request to the Developer team.'
+      title: 'Aimate help',
+      text: 'I can guide you through Aimate: where to find data, what a metric means, and which tab to use next. If I cannot answer, I’ll send a request to the Developer team.'
     }
   ]);
   const [loading, setLoading] = useState(false);
@@ -85,14 +86,14 @@ export default function HelpBot({ session }) {
   return (
     <div className={`helpbot ${open ? 'open' : ''} ${loading ? 'thinking' : ''}`}>
       {open ? (
-        <section className="helpbot-panel" aria-label="Hummingbird help bot">
+        <section className="helpbot-panel" aria-label="Aimate help bot">
           <header className="helpbot-header">
             <div className="helpbot-avatar" aria-hidden="true">
-              <img src="/favicon.svg" alt="" />
+              <img src={AIMATE_MARK} alt="" />
               <span />
             </div>
             <div>
-              <strong>Hummingbird Help</strong>
+              <strong>Aimate Help</strong>
               <small>{loading ? 'Searching the platform guide…' : session?.selectedCompanyName || 'Workspace assistant'}</small>
             </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close help bot">×</button>
@@ -144,7 +145,7 @@ export default function HelpBot({ session }) {
             ))}
             {loading ? (
               <article className="helpbot-message bot loading">
-                <strong>Hummingbird is checking…</strong>
+                <strong>Aimate is checking…</strong>
                 <span />
                 <span />
                 <span />
@@ -154,7 +155,7 @@ export default function HelpBot({ session }) {
 
           <form className="helpbot-form" onSubmit={submit}>
             <label>
-              <span>Ask Hummingbird</span>
+              <span>Ask Aimate</span>
               <input
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
@@ -166,16 +167,13 @@ export default function HelpBot({ session }) {
         </section>
       ) : null}
 
-      <button className="helpbot-launcher" type="button" onClick={() => setOpen((current) => !current)} aria-label="Open Hummingbird help">
-        <span className="bee-orbit" aria-hidden="true" />
-        <span className="bee-body" aria-hidden="true">
-          <span className="bee-wing left" />
-          <span className="bee-wing right" />
-          <span className="bee-stripe one" />
-          <span className="bee-stripe two" />
+      <button className="helpbot-launcher" type="button" onClick={() => setOpen((current) => !current)} aria-label="Open Aimate help">
+        <span className="robot-orbit" aria-hidden="true" />
+        <span className="robot-launcher-body" aria-hidden="true">
+          <img src={AIMATE_MARK} alt="" />
         </span>
-        <span className="bee-spark one" aria-hidden="true" />
-        <span className="bee-spark two" aria-hidden="true" />
+        <span className="robot-spark one" aria-hidden="true" />
+        <span className="robot-spark two" aria-hidden="true" />
         <span className="helpbot-launcher-label">Ask</span>
       </button>
     </div>

@@ -1,4 +1,4 @@
-# Hummingbird
+# Aimate
 
 Authentication and role-based company access foundation.
 
@@ -22,7 +22,7 @@ Before resetting the database, always use:
 npm run db:reset
 ```
 
-The reset script stops running Hummingbird server processes before recreating SQLite.
+The reset script stops running Aimate server processes before recreating SQLite.
 
 ## Accounts
 
@@ -65,17 +65,17 @@ Demo logins and seeded sample workspaces have been removed. Use `/signup` to cre
 
 ## Developer setup
 
-To seed the private Developer user, set `HUMMINGBIRD_DEVELOPER_PASSWORD` before starting or resetting the app:
+To seed the private Developer user, set `AIMATE_DEVELOPER_PASSWORD` before starting or resetting the app:
 
 ```bash
-export HUMMINGBIRD_SESSION_SECRET="use-a-long-random-session-secret"
-export HUMMINGBIRD_DEVELOPER_PASSWORD="use-a-secure-password"
+export AIMATE_SESSION_SECRET="use-a-long-random-session-secret"
+export AIMATE_DEVELOPER_PASSWORD="use-a-secure-password"
 npm start
 ```
 
-If no Developer exists and this env variable is missing, Hummingbird logs a setup warning and does not create a silent default password. The older `RANGO_DEVELOPER_PASSWORD` variable is still accepted as a fallback for existing local setups.
+If no Developer exists and this env variable is missing, Aimate logs a setup warning and does not create a silent default password. The older `RANGO_DEVELOPER_PASSWORD` variable is still accepted as a fallback for existing local setups.
 
-For Vercel, always set `HUMMINGBIRD_SESSION_SECRET` so signed login cookies remain valid across serverless function invocations.
+For Vercel, always set `AIMATE_SESSION_SECRET` so signed login cookies remain valid across serverless function invocations.
 
 For local development, `.env` is loaded automatically and is ignored by git.
 
@@ -91,7 +91,7 @@ GEMINI_TIMEOUT=60000
 GEMINI_RETRY_ATTEMPTS=3
 ```
 
-If `GEMINI_API_KEY` is missing, Hummingbird saves a failed analysis record with a safe error message instead of crashing.
+If `GEMINI_API_KEY` is missing, Aimate saves a failed analysis record with a safe error message instead of crashing.
 
 ## Google Search Console GEO setup
 
@@ -120,11 +120,11 @@ In Google Cloud Console:
 6. Add local redirect URI if needed: `http://localhost:3000/api/google/callback`.
 7. Make sure the connecting Google account has access to the website inside Google Search Console.
 
-In Hummingbird, open GEO Visibility, connect Google Search Console, select the verified property, then sync. The app stores Search Console rows in the database and renders the GEO tab from saved data.
+In Aimate, open GEO Visibility, connect Google Search Console, select the verified property, then sync. The app stores Search Console rows in the database and renders the GEO tab from saved data.
 
 ## Daily refresh automation
 
-Hummingbird includes a Vercel Cron job that calls `/api/cron/daily-refresh` every day at `02:00 UTC`.
+Aimate includes a Vercel Cron job that calls `/api/cron/daily-refresh` every day at `02:00 UTC`.
 
 Set this environment variable in Vercel:
 
@@ -138,7 +138,7 @@ The daily refresh:
 - reruns saved prompt visibility checks for workspaces with analysis, competitors, and prompts;
 - saves the latest database data so dashboards show fresh comparisons without manual effort.
 
-Only real saved provider data is used. If ChatGPT, Claude, or Perplexity APIs are not connected yet, those providers stay excluded from combined Hummingbird AI scoring instead of being mocked.
+Only real saved provider data is used. If ChatGPT, Claude, or Perplexity APIs are not connected yet, those providers stay excluded from combined Aimate AI scoring instead of being mocked.
 
 ## Vercel database seed
 

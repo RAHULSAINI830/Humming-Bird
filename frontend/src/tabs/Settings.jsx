@@ -207,7 +207,7 @@ export default function Settings({ data, onChange, onRefreshVisibility, onCreate
             </div>
             <div className="settings-ai-refresh-copy">
               <p className="eyebrow">Live regeneration</p>
-              <h3>Hummingbird is rebuilding the response layer</h3>
+              <h3>Aimate is rebuilding the response layer</h3>
               <p>
                 Sending saved prompts to available AI providers, checking brand mentions, competitor mentions,
                 citations, and saving a fresh comparison snapshot.

@@ -224,9 +224,9 @@ function validateAeoRecommendationsPayload(payload) {
 }
 
 function buildAeoRecommendationsPrompt(context) {
-  return `You are Hummingbird, an AEO/GEO strategy lead.
+  return `You are Aimate, an AEO/GEO strategy lead.
 
-Create a practical "what to do next" action plan for this brand using only saved Hummingbird data.
+Create a practical "what to do next" action plan for this brand using only saved Aimate data.
 
 Use the provided saved business analysis, prompt checks, competitor mentions, citation recommendations, and dashboard metrics.
 
@@ -281,7 +281,7 @@ Return this exact JSON shape:
   ]
 }
 
-Saved Hummingbird data:
+Saved Aimate data:
 ${JSON.stringify(context, null, 2)}`;
 }
 

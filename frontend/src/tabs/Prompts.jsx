@@ -65,7 +65,7 @@ export default function Prompts({ data, onChange, workspace }) {
 
       <div className="metric-grid">
         <Metric title="Total Prompts" value={summary.total ?? prompts.length} helper={promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts used` : 'Generated and manual prompts'} />
-        <Metric title="Checked Prompts" value={summary.checked ?? 0} helper="Prompts sent to Hummingbird AI" />
+        <Metric title="Checked Prompts" value={summary.checked ?? 0} helper="Prompts sent to Aimate" />
         <Metric title="Brand Mentioned" value={summary.brandMentioned ?? 0} helper="Exact response contains brand" />
         <Metric title="Citation Ideas" value={summary.citations ?? 0} helper="Recommended citation pages" />
       </div>
@@ -159,11 +159,11 @@ function AiResponses({ data }) {
       <div className="page-title">
         <p className="eyebrow">AI Responses</p>
         <h1>Exact provider responses</h1>
-        <p>Hummingbird AI responses are stored now. ChatGPT, Claude, and Perplexity are Developer-controlled and appear when enabled for this workspace.</p>
+        <p>Aimate responses are stored now. ChatGPT, Claude, and Perplexity are Developer-controlled and appear when enabled for this workspace.</p>
       </div>
 
       <div className="metric-grid">
-        <ProviderMetric title="Hummingbird AI" value={summary.gemini ?? 0} status="Connected" providerKey="gemini" active />
+        <ProviderMetric title="Aimate" value={summary.gemini ?? 0} status="Connected" providerKey="gemini" active />
         <ProviderMetric title="ChatGPT" value={summary.chatgpt ?? 0} status={(summary.chatgpt ?? 0) > 0 ? 'Connected' : 'Developer controlled'} providerKey="chatgpt" active={(summary.chatgpt ?? 0) > 0} />
         <ProviderMetric title="Claude" value={summary.claude ?? 0} status={(summary.claude ?? 0) > 0 ? 'Connected' : 'Developer controlled'} providerKey="claude" active={(summary.claude ?? 0) > 0} />
         <ProviderMetric title="Perplexity" value={summary.perplexity ?? 0} status={(summary.perplexity ?? 0) > 0 ? 'Connected' : 'Developer controlled'} providerKey="perplexity" active={(summary.perplexity ?? 0) > 0} />
@@ -176,7 +176,7 @@ function AiResponses({ data }) {
               <div className="response-card-head">
                 <ProviderLogo providerKey="gemini" />
                 <div>
-                  <p className="eyebrow">Hummingbird AI response</p>
+                  <p className="eyebrow">Aimate response</p>
                   <h2>Prompt #{prompt.prompt_order}</h2>
                 </div>
                 <StatusBadge active={prompt.brand_mentioned}>{prompt.brand_mentioned ? 'Brand mentioned' : 'No brand mention'}</StatusBadge>
@@ -195,7 +195,7 @@ function AiResponses({ data }) {
               <th>#</th>
               <th>Prompt</th>
               <th>Brand Mention</th>
-              <th>Hummingbird AI Exact Response</th>
+              <th>Aimate Exact Response</th>
               <th>ChatGPT</th>
               <th>Claude</th>
               <th>Perplexity</th>
@@ -326,7 +326,7 @@ function PromptResponseTray({ prompt, activeProvider, setActiveProvider, onClose
                 {hasResponse ? response : 'NA — this provider is not enabled for the workspace yet, or no response has been saved.'}
               </div>
               <p className="tray-response-note">
-                Hummingbird sends the prompt exactly as written to the enabled AI provider, saves the returned answer, then detects brand mentions, competitors, and citations from the saved answer.
+                Aimate sends the prompt exactly as written to the enabled AI provider, saves the returned answer, then detects brand mentions, competitors, and citations from the saved answer.
               </p>
             </div>
 

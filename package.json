@@ -1,8 +1,8 @@
 {
-  "name": "hummingbird",
+  "name": "aimate",
   "version": "0.1.0",
   "private": true,
-  "description": "Authentication and role-based company access foundation for Hummingbird.",
+  "description": "Authentication and role-based company access foundation for Aimate.",
   "type": "commonjs",
   "scripts": {
     "start": "node src/server.js",

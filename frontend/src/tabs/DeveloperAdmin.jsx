@@ -8,8 +8,10 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const users = data?.users || [];
   const accessRecords = data?.accessRecords || [];
   const helpRequests = data?.helpRequests || [];
+  const notifications = data?.notifications || [];
   const businessOwners = users.filter((user) => String(user.roles || '').includes('Business Owner'));
   const providerControlsByCompany = data?.providerControlsByCompany || {};
+  const roleOptions = ['Developer', 'Super Admin', 'Business Owner', 'Marketing Manager', 'Operations Manager', 'Branch Manager', 'Technician', 'Read-Only Analyst'];
   const [message, setMessage] = useState('');
   const [deletingCompanyId, setDeletingCompanyId] = useState(null);
   const [removingAccessId, setRemovingAccessId] = useState(null);
@@ -29,6 +31,17 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
   const [providerForms, setProviderForms] = useState({});
   const [providerErrors, setProviderErrors] = useState({});
   const [savingProvider, setSavingProvider] = useState('');
+  const [notificationForm, setNotificationForm] = useState({
+    title: '',
+    message: '',
+    audienceType: 'all',
+    companyId: '',
+    roleName: 'Business Owner',
+    targetUserIds: [],
+    excludeUserIds: []
+  });
+  const [notificationErrors, setNotificationErrors] = useState({});
+  const [sendingNotification, setSendingNotification] = useState(false);
 
   if (!data) {
     return <EmptyInline title="Loading Developer Admin" text="Fetching platform-wide companies, users, and access records." />;
@@ -135,6 +148,56 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
         [key]: value
       }
     }));
+  }
+
+  function toggleNotificationUser(key, userId) {
+    setNotificationForm((current) => {
+      const ids = new Set((current[key] || []).map(Number));
+      if (ids.has(userId)) {
+        ids.delete(userId);
+      } else {
+        ids.add(userId);
+      }
+
+      return {
+        ...current,
+        [key]: Array.from(ids)
+      };
+    });
+  }
+
+  async function sendDeveloperNotification(event) {
+    event.preventDefault();
+
+    setSendingNotification(true);
+    setNotificationErrors({});
+    setMessage('');
+
+    try {
+      const result = await api('/api/developer/notifications', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...notificationForm,
+          companyId: notificationForm.companyId ? Number(notificationForm.companyId) : null
+        })
+      });
+      onChange(result);
+      setMessage('Notification sent.');
+      setNotificationForm({
+        title: '',
+        message: '',
+        audienceType: 'all',
+        companyId: '',
+        roleName: 'Business Owner',
+        targetUserIds: [],
+        excludeUserIds: []
+      });
+    } catch (error) {
+      setMessage(error.message);
+      setNotificationErrors(error.data?.errors || {});
+    } finally {
+      setSendingNotification(false);
+    }
   }
 
   async function saveCompanyLimits(event) {
@@ -283,6 +346,134 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
           <div><span>Users</span><strong>{stats.users ?? 0}</strong></div>
           <div><span>Access</span><strong>{stats.accessRecords ?? 0}</strong></div>
           <div><span>Active</span><strong>{stats.activeCompanies ?? 0}</strong></div>
+        </div>
+      </article>
+
+      <article className="developer-section-card developer-notification-card">
+        <div className="developer-section-head">
+          <div>
+            <p className="eyebrow">Platform Notifications</p>
+            <h2>Send bell notifications</h2>
+            <p>Create announcements for all users, one workspace, a role, or specific users. Exclusions let you decide who should not receive it.</p>
+          </div>
+          <span className="soft-pill">{notifications.length} sent</span>
+        </div>
+
+        <form className="developer-notification-grid" onSubmit={sendDeveloperNotification}>
+          <div className="notification-compose">
+            <Input
+              label="Title"
+              value={notificationForm.title}
+              error={notificationErrors.title}
+              onChange={(value) => setNotificationForm((current) => ({ ...current, title: value }))}
+            />
+            <label className="field">
+              <span>Message <em>Required</em></span>
+              <span className="input-shell textarea-shell">
+                <textarea
+                  rows="4"
+                  value={notificationForm.message}
+                  onChange={(event) => setNotificationForm((current) => ({ ...current, message: event.target.value }))}
+                  placeholder="Tell users what changed, what to do next, or what to expect."
+                />
+              </span>
+              {notificationErrors.message ? <strong>{notificationErrors.message}</strong> : null}
+            </label>
+            <label className="field">
+              <span>Send to <em>Required</em></span>
+              <span className="input-shell">
+                <select
+                  value={notificationForm.audienceType}
+                  onChange={(event) => setNotificationForm((current) => ({ ...current, audienceType: event.target.value }))}
+                >
+                  <option value="all">All active users</option>
+                  <option value="company">One company workspace</option>
+                  <option value="role">Users with a role</option>
+                  <option value="users">Selected users only</option>
+                </select>
+              </span>
+              {notificationErrors.audienceType ? <strong>{notificationErrors.audienceType}</strong> : null}
+            </label>
+
+            {notificationForm.audienceType === 'company' ? (
+              <label className="field">
+                <span>Company <em>Required</em></span>
+                <span className="input-shell">
+                  <select
+                    value={notificationForm.companyId}
+                    onChange={(event) => setNotificationForm((current) => ({ ...current, companyId: event.target.value }))}
+                  >
+                    <option value="">Choose company</option>
+                    {companies.map((company) => (
+                      <option key={company.company_id} value={company.company_id}>{company.company_name}</option>
+                    ))}
+                  </select>
+                </span>
+                {notificationErrors.companyId ? <strong>{notificationErrors.companyId}</strong> : null}
+              </label>
+            ) : null}
+
+            {notificationForm.audienceType === 'role' ? (
+              <label className="field">
+                <span>Role <em>Required</em></span>
+                <span className="input-shell">
+                  <select
+                    value={notificationForm.roleName}
+                    onChange={(event) => setNotificationForm((current) => ({ ...current, roleName: event.target.value }))}
+                  >
+                    {roleOptions.map((role) => <option key={role} value={role}>{role}</option>)}
+                  </select>
+                </span>
+                {notificationErrors.roleName ? <strong>{notificationErrors.roleName}</strong> : null}
+              </label>
+            ) : null}
+
+            <button className="primary-button" type="submit" disabled={sendingNotification}>
+              {sendingNotification ? 'Sending notification…' : 'Send notification'}
+            </button>
+          </div>
+
+          <div className="notification-targeting">
+            <div>
+              <h3>{notificationForm.audienceType === 'users' ? 'Select recipients' : 'Exclude users'}</h3>
+              <p>{notificationForm.audienceType === 'users' ? 'Only checked users receive this notice.' : 'Checked users will not receive this notice.'}</p>
+            </div>
+            <div className="notification-user-picker">
+              {users.map((user) => {
+                const key = notificationForm.audienceType === 'users' ? 'targetUserIds' : 'excludeUserIds';
+                const checked = (notificationForm[key] || []).map(Number).includes(Number(user.user_id));
+                return (
+                  <label key={user.user_id} className="notification-user-option">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleNotificationUser(key, Number(user.user_id))}
+                    />
+                    <LogoChip name={user.full_name} />
+                    <span>
+                      <strong>{user.full_name}</strong>
+                      <small>{user.email}</small>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {notificationErrors.targetUserIds ? <strong className="field-error">{notificationErrors.targetUserIds}</strong> : null}
+          </div>
+        </form>
+
+        <div className="developer-notification-history">
+          {notifications.slice(0, 6).map((notification) => (
+            <div key={notification.id} className="developer-notification-row">
+              <div>
+                <strong>{notification.title}</strong>
+                <p>{notification.message}</p>
+              </div>
+              <span>{notification.audience_type}{notification.company_name ? ` · ${notification.company_name}` : notification.role_name ? ` · ${notification.role_name}` : ''}</span>
+              <small>{notification.read_count || 0} read · {notification.created_at}</small>
+            </div>
+          ))}
+          {!notifications.length ? <DashboardEmptyBlock title="No notifications sent yet" text="Developer announcements will appear here after you send the first one." /> : null}
         </div>
       </article>
 
@@ -581,7 +772,7 @@ export default function DeveloperAdmin({ data, onChange, workspace }) {
             <LogoChip name={automationCompany?.company_name || 'Company'} url={automationCompany?.logo_url || automationCompany?.website_url} />
             <div>
               <strong>{automationCompany?.company_name}</strong>
-              <small>Control when Hummingbird refreshes prompts, AI responses, and saved visibility data.</small>
+              <small>Control when Aimate refreshes prompts, AI responses, and saved visibility data.</small>
             </div>
           </div>
 
@@ -845,7 +1036,7 @@ function automationMeta(company) {
 
 function providerLabel(providerName) {
   const labels = {
-    gemini: 'Hummingbird AI',
+    gemini: 'Aimate',
     openai: 'ChatGPT',
     claude: 'Claude',
     perplexity: 'Perplexity'

@@ -47,14 +47,76 @@ function buildExcelWorkbook(sections) {
       </style>
     </head>
     <body>
-      <h1>Hummingbird Overview Export</h1>
+      <h1>Aimate Overview Export</h1>
       <p>Generated on ${escapeHtml(new Date().toLocaleString())}</p>
       ${sectionHtml}
     </body>
   </html>`;
 }
 
-export default function Dashboard({ data, session, workspace, goTo }) {
+function NotificationBell({ notifications = [], onMarkRead }) {
+  const [open, setOpen] = useState(false);
+  const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+  const visibleNotifications = notifications.slice(0, 8);
+
+  async function markRead(notification) {
+    if (notification.is_read || !onMarkRead) return;
+    await onMarkRead(notification.id);
+  }
+
+  return (
+    <div className="overview-notification-wrap">
+      <button
+        type="button"
+        className="overview-notification-button"
+        aria-label="Notifications"
+        title="Notifications"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 8.5a6 6 0 0 0-12 0c0 7-3 7-3 8.7 0 .8.7 1.3 1.5 1.3h15c.8 0 1.5-.5 1.5-1.3 0-1.7-3-1.7-3-8.7Z" />
+          <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" />
+        </svg>
+        {unreadCount ? <span>{unreadCount > 9 ? '9+' : unreadCount}</span> : null}
+      </button>
+      {open ? (
+        <div className="overview-notification-panel">
+          <div className="notification-panel-head">
+            <strong>Notifications</strong>
+            <small>{unreadCount ? `${unreadCount} unread` : 'All caught up'}</small>
+          </div>
+          {visibleNotifications.length ? (
+            <div className="notification-list">
+              {visibleNotifications.map((notification) => (
+                <button
+                  type="button"
+                  key={notification.id}
+                  className={`notification-item ${notification.is_read ? 'read' : 'unread'}`}
+                  onClick={() => markRead(notification)}
+                >
+                  <span />
+                  <div>
+                    <strong>{notification.title}</strong>
+                    <p>{notification.message}</p>
+                    <small>{notification.created_at}</small>
+                  </div>
+                  {!notification.is_read ? <em>Mark read</em> : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="notification-empty">
+              <strong>No notifications yet</strong>
+              <p>Developer announcements will appear here.</p>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function Dashboard({ data, session, workspace, goTo, notifications = [], onMarkNotificationRead }) {
   const company = data?.company || data?.companyProfile || {};
   const visibility = data?.visibilitySummary || {};
   const hasRealData = Boolean(visibility.hasRealData);
@@ -120,7 +182,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `hummingbird-overview-${fileCompanyName}-${new Date().toISOString().slice(0, 10)}.xls`;
+    link.download = `aimate-overview-${fileCompanyName}-${new Date().toISOString().slice(0, 10)}.xls`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -143,13 +205,8 @@ export default function Dashboard({ data, session, workspace, goTo }) {
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </button>
-          <button type="button" className="overview-notification-button" aria-label="Notifications" title="Notifications">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M18 8.5a6 6 0 0 0-12 0c0 7-3 7-3 8.7 0 .8.7 1.3 1.5 1.3h15c.8 0 1.5-.5 1.5-1.3 0-1.7-3-1.7-3-8.7Z" />
-              <path d="M9.8 21a2.4 2.4 0 0 0 4.4 0" />
-            </svg>
-          </button>
-          <span className="overview-ai-logo-chip" title="Hummingbird AI">
+          <NotificationBell notifications={notifications} onMarkRead={onMarkNotificationRead} />
+          <span className="overview-ai-logo-chip" title="Aimate">
             <ProviderLogo providerKey="gemini" />
           </span>
         </div>
@@ -182,11 +239,11 @@ export default function Dashboard({ data, session, workspace, goTo }) {
       <div className="overview-hero-grid">
         <article className="overview-ai-card" style={{ '--overview-card-bg': `url(${overviewCardBg})` }}>
           <div>
-            <p className="eyebrow">Hummingbird AI overview</p>
+            <p className="eyebrow">Aimate overview</p>
             <strong>{percentOrEmpty(displayVisibility.visibilityScore)}</strong>
             <small>
               {hasRealData
-                ? `Hummingbird AI analyzed saved responses from available sources${activeProviders.length ? `: ${activeProviders.join(', ')}` : ''}.`
+                ? `Aimate analyzed saved responses from available sources${activeProviders.length ? `: ${activeProviders.join(', ')}` : ''}.`
                 : 'Run prompt checks to calculate visibility from saved AI responses.'}
             </small>
           </div>
@@ -220,7 +277,7 @@ export default function Dashboard({ data, session, workspace, goTo }) {
             title="Average Brand Position"
             value={averageBrandPosition}
             subtitle="Lower is better · your rank by AI mentions"
-            description="This is where your brand ranks against tracked competitors based on saved AI prompt responses. #1 means Hummingbird found your brand mentioned more often than competitors."
+            description="This is where your brand ranks against tracked competitors based on saved AI prompt responses. #1 means Aimate found your brand mentioned more often than competitors."
             rows={[
               { brand: ownBrand || { name: session.selectedCompanyName, website_url: company.website_url, logo_url: company.logo_url }, count: averageBrandPosition, delta: hasRealData ? `${ownBrand?.share ?? 0}% share` : '—' },
               ...competitorRows.slice(0, 2).map((item) => ({ brand: item, count: item.position ? `#${item.position}` : '—', delta: `${item.share ?? 0}% share` }))

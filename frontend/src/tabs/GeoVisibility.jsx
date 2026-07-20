@@ -133,14 +133,14 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
           <div>
             <p className="eyebrow">Google Search Console</p>
             <h2>Connect a verified website property</h2>
-            <p>For accurate GEO data, Hummingbird uses Google Search Console. The user’s Google account must have access to the website property.</p>
+            <p>For accurate GEO data, Aimate uses Google Search Console. The user’s Google account must have access to the website property.</p>
           </div>
           {canManage ? (
             <button
               type="button"
               className="primary-button"
               onClick={() => {
-                window.localStorage.setItem('hummingbird.activeView', 'geo');
+                window.localStorage.setItem('aimate.activeView', 'geo');
                 window.location.href = '/api/google/connect';
               }}
             >
@@ -167,7 +167,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
                   ? summary.lastSyncedAt
                     ? `Last refreshed on ${summary.lastSyncedAt}`
                     : 'Property selected. Click Refresh Search Console to pull the latest saved rows.'
-                  : 'Choose which Search Console property belongs to this workspace before Hummingbird syncs data.'}
+                  : 'Choose which Search Console property belongs to this workspace before Aimate syncs data.'}
               </p>
               {data?.connected ? (
                 <div className="geo-sync-diagnostics">
@@ -206,7 +206,7 @@ export default function GeoVisibility({ data, onChange, workspace, geoTab = 'per
               <div>
                 <p className="eyebrow">Choose Search Console property</p>
                 <h2>Select the website property to track</h2>
-                <p>Hummingbird will lock this property for the workspace and sync the latest Search Analytics rows. You can disconnect later if you need to choose another property.</p>
+                <p>Aimate will lock this property for the workspace and sync the latest Search Analytics rows. You can disconnect later if you need to choose another property.</p>
               </div>
               <div className="geo-property-list">
                 {properties.map((property) => (
@@ -342,7 +342,7 @@ function GeoPropertySelectionModal({ properties, loading, onSelect }) {
           <p className="eyebrow">Search Console connected</p>
           <h2 id="geo-property-title">Which website data should this workspace show?</h2>
           <p>
-            Pick the verified Search Console property for this company. Hummingbird will lock this workspace to that
+            Pick the verified Search Console property for this company. Aimate will lock this workspace to that
             property, sync real Google Search Console rows, and keep the data separated from every other company.
           </p>
         </div>
@@ -912,7 +912,7 @@ function GeoLeafletMap({ rows, focusedCountryCode }) {
         <div className="geo-map-empty">
           <SettingsIcon name="globe" />
           <strong>No GEO rows saved yet</strong>
-          <span>Click Sync Search Console after connecting a verified property. Hummingbird stores every country row by company workspace.</span>
+          <span>Click Sync Search Console after connecting a verified property. Aimate stores every country row by company workspace.</span>
         </div>
       ) : null}
     </div>

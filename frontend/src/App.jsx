@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { api } from './lib/api';
-import { ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, geoSubTabs, navItems, readInitialActiveView } from './lib/constants';
+import { AIMATE_MARK, ACTIVE_VIEW_STORAGE_KEY, DEFAULT_ACTIVE_VIEW, allowedViewKeys, geoSubTabs, navItems, readInitialActiveView } from './lib/constants';
 import { AuthScreen, BrandLogo, LoadingScreen, LogoChip, SetupGenerationScreen, TabLoading, WorkspaceCard, labelForView } from './components/common';
 import HelpBot from './components/HelpBot';
 import businessAnalysisIcon from './assets/nav/business-analysis.svg';
@@ -61,6 +61,7 @@ function App() {
   const [geoTab, setGeoTab] = useState('performance');
   const [settingsData, setSettingsData] = useState(null);
   const [developerData, setDeveloperData] = useState(null);
+  const [notificationsData, setNotificationsData] = useState({ notifications: [] });
   const [setupStatus, setSetupStatus] = useState(null);
   const [setupStatusLoading, setSetupStatusLoading] = useState(false);
   const [setupLoading, setSetupLoading] = useState(false);
@@ -124,7 +125,7 @@ function App() {
       'unauthorized-client': 'This OAuth client is not allowed to use this flow. Check Google OAuth client type and redirect URI.',
       'redirect-uri-mismatch': 'Google OAuth redirect URI does not exactly match the Vercel callback URL.',
       'permission-denied': 'The connected Google account does not have permission for Search Console properties.',
-      'google-network-error': 'Hummingbird could not reach Google from the server. Try again or check local network access.',
+      'google-network-error': 'Aimate could not reach Google from the server. Try again or check local network access.',
       'search-console-error': 'Google connected, but Search Console properties could not be fetched.',
       'google-callback-error': 'Google OAuth callback failed. Check Vercel environment variables and Google Cloud setup.'
     };
@@ -175,12 +176,25 @@ function App() {
       setSetupError('');
       setLoadedViews({});
       setLoadingViews({});
+      setNotificationsData({ notifications: [] });
       setNotice('Your session expired. Please log in again.');
     }
 
+    window.addEventListener('aimate:auth-expired', handleAuthExpired);
     window.addEventListener('hummingbird:auth-expired', handleAuthExpired);
-    return () => window.removeEventListener('hummingbird:auth-expired', handleAuthExpired);
+    return () => {
+      window.removeEventListener('aimate:auth-expired', handleAuthExpired);
+      window.removeEventListener('hummingbird:auth-expired', handleAuthExpired);
+    };
   }, []);
+
+  useEffect(() => {
+    if (status !== 'ready') return;
+
+    api('/api/notifications')
+      .then(setNotificationsData)
+      .catch(() => setNotificationsData({ notifications: [] }));
+  }, [status, session?.selectedCompanyId]);
 
   useEffect(() => {
     if (status !== 'ready') return;
@@ -283,6 +297,7 @@ function App() {
     setCitationsData({ citations: [], summary: null });
     setGeoData(null);
     setSettingsData(null);
+    setNotificationsData({ notifications: [] });
     setLoadedViews({});
     setLoadingViews({});
     setActiveView('dashboard');
@@ -355,11 +370,21 @@ function App() {
     setCitationsData({ citations: [], summary: null });
     setGeoData(null);
     setSettingsData(null);
+    setNotificationsData({ notifications: [] });
     setLoadedViews({});
     setLoadingViews({});
     setActiveView('dashboard');
 
     return data;
+  }
+
+  async function handleMarkNotificationRead(notificationId) {
+    const result = await api('/api/notifications/read', {
+      method: 'POST',
+      body: JSON.stringify({ notificationId })
+    });
+    setNotificationsData(result);
+    return result;
   }
 
   if (status === 'loading') {
@@ -407,7 +432,7 @@ function App() {
           setSidebarOpen((current) => !current);
           setActiveView('dashboard');
         }}>
-          <img className="sidebar-favicon" src="/app/favicon.svg" alt="Hummingbird" />
+          <img className="sidebar-favicon" src={AIMATE_MARK} alt="Aimate" />
           <span className="sidebar-full-logo"><BrandLogo /></span>
         </a>
 
@@ -492,7 +517,16 @@ function App() {
         {!(loadingViews[activeView] && !loadedViews[activeView]) ? (
           <div className={`tab-content-wrapper ${loadingViews[activeView] ? 'tab-refreshing' : ''}`}>
             <Suspense fallback={<TabLoading title={`Opening ${labelForView(activeView)}`} />}>
-              {activeView === 'dashboard' ? <Dashboard data={dashboard} session={session} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
+              {activeView === 'dashboard' ? (
+                <Dashboard
+                  data={dashboard}
+                  session={session}
+                  workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />}
+                  goTo={setActiveView}
+                  notifications={notificationsData.notifications || []}
+                  onMarkNotificationRead={handleMarkNotificationRead}
+                />
+              ) : null}
               {activeView === 'business-analysis' ? <BusinessAnalysis data={businessAnalysis} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}
               {activeView === 'aeo-recommendations' ? <AeoRecommendations data={aeoRecommendations} onChange={setAeoRecommendations} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} goTo={setActiveView} /> : null}
               {activeView === 'competitors' ? <Competitors data={competitorsData} onChange={setCompetitorsData} workspace={<WorkspaceCard session={session} onChange={handleWorkspaceChange} />} /> : null}

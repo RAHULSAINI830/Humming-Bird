@@ -47,7 +47,7 @@ export default function Citations({ data, workspace }) {
       <PageHeader
         eyebrow="Citations"
         title="Citation intelligence"
-        subtitle="Source pages Hummingbird found from saved AI responses, brand mentions, competitor mentions, and prompt checks."
+        subtitle="Source pages Aimate found from saved AI responses, brand mentions, competitor mentions, and prompt checks."
         workspace={workspace}
       />
 
