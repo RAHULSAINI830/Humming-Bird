@@ -1528,5 +1528,13 @@ module.exports = {
   analyzePromptVisibility,
   generateAeoRecommendations,
   testProviderConnection,
-  getProviderDiagnostics
+  getProviderDiagnostics,
+  extractWebsiteSnapshot,
+  buildBusinessAnalysisPrompt,
+  validateBusinessAnalysisPayload,
+  buildPromptGenerationPrompt,
+  validatePromptGenerationPayload,
+  buildCompetitorDiscoveryPrompt,
+  validateCompetitorDiscoveryPayload,
+  normalizeGeminiJsonText
 };

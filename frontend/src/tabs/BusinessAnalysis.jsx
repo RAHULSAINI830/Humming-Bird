@@ -38,13 +38,13 @@ export default function BusinessAnalysis({ data, workspace }) {
           ) : isFailed ? (
             <>
               <span className="analysis-hero-source analysis-hero-source-error">Last attempt failed</span>
-              <h2>Hummingbird AI could not finish the last business analysis run.</h2>
+              <h2>Aimate could not finish the last business analysis run.</h2>
               <p className="analysis-hero-error">{latest?.error_message || 'An unexpected error stopped the analysis. Retry from Setup or Settings.'}</p>
             </>
           ) : isInProgress ? (
             <>
               <span className="analysis-hero-source">Running now</span>
-              <h2>Hummingbird AI is generating your business analysis.</h2>
+              <h2>Aimate is generating your business analysis.</h2>
               <p className="analysis-hero-timestamp">This finishes in a moment. Refresh this tab shortly.</p>
             </>
           ) : (

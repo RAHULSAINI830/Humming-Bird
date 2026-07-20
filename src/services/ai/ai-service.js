@@ -3,12 +3,144 @@ const OpenAIProvider = require('./openai');
 const PerplexityProvider = require('./perplexity');
 const ClaudeProvider = require('./claude');
 
+function configuredGenerationProviderNames() {
+  return ['gemini', 'openai', 'claude', 'perplexity'].filter((providerName) => providerConfigured(providerName));
+}
+
+function normalizeProviderJsonText(text) {
+  return normalizeJsonText(text).replace(/,\s*([}\]])/g, '$1').trim();
+}
+
+function providerTimeout(providerName) {
+  if (providerName === 'openai') return OpenAIProvider.openaiTimeout();
+  if (providerName === 'claude') return ClaudeProvider.claudeTimeout();
+  if (providerName === 'perplexity') return PerplexityProvider.perplexityTimeout();
+  return 60000;
+}
+
+async function callProviderJson(providerName, prompt, options = {}) {
+  if (providerName === 'openai') {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), providerTimeout(providerName));
+
+    try {
+      const payload = await OpenAIProvider.callOpenAi(prompt, controller.signal);
+      const text = normalizeProviderJsonText(OpenAIProvider.extractOpenAiText(payload));
+
+      if (!text) throw new Error('AI_INVALID_JSON');
+
+      return JSON.parse(text);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('OPENAI_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  if (providerName === 'claude') {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), providerTimeout(providerName));
+
+    try {
+      const payload = await ClaudeProvider.callClaude(prompt, controller.signal, {
+        maxTokens: options.maxTokens || 2400
+      });
+      const text = normalizeProviderJsonText(ClaudeProvider.extractClaudeText(payload));
+
+      if (!text) throw new Error('AI_INVALID_JSON');
+
+      return JSON.parse(text);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('CLAUDE_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  if (providerName === 'perplexity') {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), providerTimeout(providerName));
+
+    try {
+      const payload = await PerplexityProvider.callPerplexity(prompt, controller.signal);
+      const text = normalizeProviderJsonText(PerplexityProvider.extractPerplexityText(payload));
+
+      if (!text) throw new Error('AI_INVALID_JSON');
+
+      return JSON.parse(text);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error('PERPLEXITY_TIMEOUT');
+      if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error('AI_MISSING_KEY');
+}
+
+async function runStructuredGenerationWithFallback(label, geminiRun, fallbackRun) {
+  const errors = [];
+
+  if (providerConfigured('gemini')) {
+    try {
+      return await geminiRun();
+    } catch (error) {
+      errors.push({ providerName: 'gemini', error });
+    }
+  }
+
+  for (const providerName of configuredGenerationProviderNames().filter((name) => name !== 'gemini')) {
+    try {
+      return await fallbackRun(providerName);
+    } catch (error) {
+      errors.push({ providerName, error });
+    }
+  }
+
+  const firstError = errors[0]?.error || new Error('AI_MISSING_KEY');
+  firstError.failedProviders = errors.map((item) => item.providerName);
+  firstError.generationTask = label;
+  throw firstError;
+}
+
 async function generateBusinessAnalysis(company) {
-  return GeminiProvider.generateBusinessAnalysis(company);
+  return runStructuredGenerationWithFallback(
+    'business-analysis',
+    () => GeminiProvider.generateBusinessAnalysis(company),
+    async (providerName) => {
+      const websiteSnapshot = await GeminiProvider.extractWebsiteSnapshot(company.website_url);
+      const payload = await callProviderJson(
+        providerName,
+        GeminiProvider.buildBusinessAnalysisPrompt(company, websiteSnapshot),
+        { maxTokens: 2200 }
+      );
+
+      return GeminiProvider.validateBusinessAnalysisPayload(payload);
+    }
+  );
 }
 
 async function generateCompanyPrompts(company, analysis) {
-  return GeminiProvider.generateCompanyPrompts(company, analysis);
+  return runStructuredGenerationWithFallback(
+    'prompt-generation',
+    () => GeminiProvider.generateCompanyPrompts(company, analysis),
+    async (providerName) => {
+      const websiteSnapshot = await GeminiProvider.extractWebsiteSnapshot(company.website_url);
+      const payload = await callProviderJson(
+        providerName,
+        GeminiProvider.buildPromptGenerationPrompt(company, analysis, websiteSnapshot),
+        { maxTokens: 2600 }
+      );
+
+      return GeminiProvider.validatePromptGenerationPayload(payload);
+    }
+  );
 }
 
 function normalizeJsonText(text) {
@@ -189,7 +321,19 @@ async function researchPrompts(company, analysis, existingPrompts, research = {}
 }
 
 async function discoverCompetitors(company, analysis) {
-  return GeminiProvider.discoverCompetitors(company, analysis);
+  return runStructuredGenerationWithFallback(
+    'competitor-discovery',
+    () => GeminiProvider.discoverCompetitors(company, analysis),
+    async (providerName) => {
+      const payload = await callProviderJson(
+        providerName,
+        GeminiProvider.buildCompetitorDiscoveryPrompt(company, analysis),
+        { maxTokens: 1800 }
+      );
+
+      return GeminiProvider.validateCompetitorDiscoveryPayload(payload);
+    }
+  );
 }
 
 function controlFor(providerControls, providerName) {

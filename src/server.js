@@ -558,7 +558,7 @@ function serveFrontend(req, res, url) {
   }
 
   if (url.pathname === '/favicon.ico' || url.pathname === '/favicon.svg') {
-    return redirect(res, '/app/aimate-mark.png');
+    return redirect(res, '/app/favicon.png');
   }
 
   if (url.pathname.startsWith('/app/assets/')) {
@@ -2744,7 +2744,8 @@ async function handleSetupRunChecks(req, res) {
     const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
       providerControls,
       refreshType: 'manual',
-      initialProviderBootstrap
+      initialProviderBootstrap,
+      allowPartialProviderBootstrap: true
     });
     const run = updatePromptVisibility(companyId, visibilityResults, {
       runType: 'setup-check',
@@ -3196,7 +3197,8 @@ async function handleGenerateSetup(req, res) {
       const visibilityResults = await AIService.analyzePromptVisibility(context.access, prompts, competitors, analysis, {
         providerControls,
         refreshType: 'manual',
-        initialProviderBootstrap
+        initialProviderBootstrap,
+        allowPartialProviderBootstrap: true
       });
       const run = updatePromptVisibility(companyId, visibilityResults, {
         runType: 'setup-check',
@@ -3809,7 +3811,8 @@ async function handleSettingsRefreshVisibility(req, res) {
     const { visibilityResults, failedBatches } = await analyzePromptVisibilitySafely(context, prompts, competitors, analysis, {
       providerControls,
       refreshType: 'manual',
-      initialProviderBootstrap
+      initialProviderBootstrap,
+      allowPartialProviderBootstrap: true
     });
 
     if (!visibilityResults.length) {
