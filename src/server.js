@@ -20,6 +20,7 @@ const {
   getUserWorkspaceCreationLimit,
   updateUserWorkspaceLimit,
   getCompanyAiProviderControls,
+  getCompanyAiProviderControlsForCompanies,
   updateCompanyAiProviderControl,
   logAiProviderUsage,
   getDeveloperCompanyAccess,
@@ -963,11 +964,12 @@ function logProviderUsageFromResults(companyId, runId, results) {
 
 function developerAdminPayload() {
   const companies = listAllCompaniesForDeveloper();
-  const providerControlsByCompany = {};
-
-  companies.forEach((company) => {
-    providerControlsByCompany[company.company_id] = getCompanyAiProviderControls(company.company_id);
-  });
+  // Was N companies x 9 queries (one round trip per company just to check AI
+  // provider usage). Fetching every company's controls in one batched call
+  // keeps this to 3 queries total regardless of platform size.
+  const providerControlsByCompany = Object.fromEntries(
+    getCompanyAiProviderControlsForCompanies(companies.map((company) => company.company_id))
+  );
 
   return {
     stats: getPlatformStats(),
@@ -1863,6 +1865,7 @@ function geoDashboardPayload(companyId) {
   const previousTotals = aggregateRows(previousDateRows);
   const previousQueryMap = byKey(previousQueryRows);
   const previousPageMap = byKey(previousPageRows);
+  const companyName = getDeveloperCompanyAccess(companyId)?.company_name || '';
   const enrichedQueries = queryRows.map((row) => {
     const previous = previousQueryMap.get(String(row.query || '').toLowerCase());
     const clickChange = previous ? Number(row.clicks || 0) - Number(previous.clicks || 0) : Number(row.clicks || 0);
@@ -1872,7 +1875,7 @@ function geoDashboardPayload(companyId) {
     return {
       ...row,
       search_intent: searchIntentForQuery(row.query),
-      brand_type: brandTypeForQuery(row.query, getDeveloperCompanyAccess(companyId)?.company_name || ''),
+      brand_type: brandTypeForQuery(row.query, companyName),
       status: queryStatus(row, previous),
       click_change: clickChange,
       impression_change: impressionChange,

@@ -1466,9 +1466,7 @@ function aiProviderUsageForPeriod(companyId, providerName, sinceIso) {
   `).get(companyId, providerName, sinceIso);
 }
 
-function withAiProviderUsage(companyId, control) {
-  const daily = aiProviderUsageForPeriod(companyId, control.provider_name, periodStart(0));
-  const monthly = aiProviderUsageForPeriod(companyId, control.provider_name, periodStart(30));
+function applyAiProviderUsage(control, daily, monthly) {
   const dailyLimit = Number(control.daily_prompt_limit || 0);
   const monthlyLimit = Number(control.monthly_prompt_limit || 0);
   const monthlyCostLimit = Number(control.monthly_cost_limit_cents || 0);
@@ -1484,6 +1482,27 @@ function withAiProviderUsage(companyId, control) {
   };
 }
 
+function withAiProviderUsage(companyId, control) {
+  const daily = aiProviderUsageForPeriod(companyId, control.provider_name, periodStart(0));
+  const monthly = aiProviderUsageForPeriod(companyId, control.provider_name, periodStart(30));
+  return applyAiProviderUsage(control, daily, monthly);
+}
+
+function mergeAiProviderControlRow(companyId, defaultControl, row) {
+  return {
+    ...defaultControl,
+    ...row,
+    company_id: companyId,
+    label: defaultControl.label,
+    status: row.status || defaultControl.status,
+    daily_prompt_limit: Number(row.daily_prompt_limit ?? defaultControl.daily_prompt_limit),
+    monthly_prompt_limit: Number(row.monthly_prompt_limit ?? defaultControl.monthly_prompt_limit),
+    monthly_cost_limit_cents: Number(row.monthly_cost_limit_cents ?? defaultControl.monthly_cost_limit_cents),
+    auto_refresh_enabled: Number(row.auto_refresh_enabled ?? defaultControl.auto_refresh_enabled),
+    manual_refresh_enabled: Number(row.manual_refresh_enabled ?? defaultControl.manual_refresh_enabled)
+  };
+}
+
 function getCompanyAiProviderControls(companyId) {
   const rows = db.prepare(`
     SELECT *
@@ -1494,19 +1513,58 @@ function getCompanyAiProviderControls(companyId) {
 
   return DEFAULT_AI_PROVIDER_CONTROLS.map((defaultControl) => {
     const row = rowByProvider.get(defaultControl.provider_name) || {};
-    return withAiProviderUsage(companyId, {
-      ...defaultControl,
-      ...row,
-      company_id: companyId,
-      label: defaultControl.label,
-      status: row.status || defaultControl.status,
-      daily_prompt_limit: Number(row.daily_prompt_limit ?? defaultControl.daily_prompt_limit),
-      monthly_prompt_limit: Number(row.monthly_prompt_limit ?? defaultControl.monthly_prompt_limit),
-      monthly_cost_limit_cents: Number(row.monthly_cost_limit_cents ?? defaultControl.monthly_cost_limit_cents),
-      auto_refresh_enabled: Number(row.auto_refresh_enabled ?? defaultControl.auto_refresh_enabled),
-      manual_refresh_enabled: Number(row.manual_refresh_enabled ?? defaultControl.manual_refresh_enabled)
-    });
+    return withAiProviderUsage(companyId, mergeAiProviderControlRow(companyId, defaultControl, row));
   });
+}
+
+function bulkAiProviderUsageByPeriod(companyIds, sinceIso) {
+  const placeholders = companyIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT
+      company_id,
+      provider_name,
+      COUNT(*) AS prompts_used,
+      COALESCE(SUM(estimated_cost_cents), 0) AS estimated_cost_cents
+    FROM ai_provider_usage_logs
+    WHERE company_id IN (${placeholders})
+      AND status = 'completed'
+      AND created_at >= ?
+    GROUP BY company_id, provider_name
+  `).all(...companyIds, sinceIso);
+
+  return new Map(rows.map((row) => [`${row.company_id}|${row.provider_name}`, row]));
+}
+
+function getCompanyAiProviderControlsForCompanies(companyIds) {
+  const ids = Array.from(new Set((companyIds || []).map((id) => Number(id)).filter(Boolean)));
+  const result = new Map(ids.map((id) => [id, []]));
+
+  if (!ids.length) return result;
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT *
+    FROM company_ai_provider_controls
+    WHERE company_id IN (${placeholders})
+  `).all(...ids);
+  const rowByCompanyProvider = new Map(rows.map((row) => [`${row.company_id}|${row.provider_name}`, row]));
+
+  const dailyUsage = bulkAiProviderUsageByPeriod(ids, periodStart(0));
+  const monthlyUsage = bulkAiProviderUsageByPeriod(ids, periodStart(30));
+
+  ids.forEach((companyId) => {
+    const controls = DEFAULT_AI_PROVIDER_CONTROLS.map((defaultControl) => {
+      const key = `${companyId}|${defaultControl.provider_name}`;
+      const row = rowByCompanyProvider.get(key) || {};
+      const merged = mergeAiProviderControlRow(companyId, defaultControl, row);
+
+      return applyAiProviderUsage(merged, dailyUsage.get(key), monthlyUsage.get(key));
+    });
+
+    result.set(companyId, controls);
+  });
+
+  return result;
 }
 
 function updateCompanyAiProviderControl(companyId, control) {
@@ -3009,6 +3067,7 @@ module.exports = {
   updateCompanyAutomationPolicy,
   markCompanyAutoRefreshed,
   getCompanyAiProviderControls,
+  getCompanyAiProviderControlsForCompanies,
   updateCompanyAiProviderControl,
   logAiProviderUsage,
   getDeveloperCompanyAccess,
