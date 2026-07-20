@@ -87,11 +87,13 @@ Business Analysis uses the platform Gemini key from `.env`:
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-flash-lite-latest
 GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-2.0-flash-lite,gemini-flash-latest
-GEMINI_TIMEOUT=60000
+GEMINI_TIMEOUT=25000
 GEMINI_RETRY_ATTEMPTS=3
 ```
 
 If `GEMINI_API_KEY` is missing, Aimate saves a failed analysis record with a safe error message instead of crashing.
+
+`GEMINI_TIMEOUT`/`OPENAI_TIMEOUT`/`CLAUDE_TIMEOUT`/`PERPLEXITY_TIMEOUT` each default to 25s per call. Prompt visibility checks now fan out across prompts and providers concurrently (see `api/index.js`'s `maxDuration: 60`), so keep these under ~50s combined with retries — a single provider hanging near 60s can otherwise consume the whole serverless request budget.
 
 ## Google Search Console GEO setup
 

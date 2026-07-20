@@ -81,8 +81,8 @@ function geminiModelPath(model = geminiModel()) {
 }
 
 function geminiTimeout() {
-  const value = Number(process.env.GEMINI_TIMEOUT || 60000);
-  return Number.isFinite(value) && value > 0 ? value : 60000;
+  const value = Number(process.env.GEMINI_TIMEOUT || 25000);
+  return Number.isFinite(value) && value > 0 ? value : 25000;
 }
 
 function geminiRetryAttempts() {
@@ -1417,9 +1417,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     throw new Error('AI_MISSING_KEY');
   }
 
-  const results = [];
-
-  for (const prompt of prompts) {
+  return Promise.all(prompts.map(async (prompt) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
@@ -1447,7 +1445,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
       const competitorMentions = competitorMentionsFor(responseText, competitors);
       const usage = geminiTokenUsage(payload);
 
-      results.push({
+      return {
         prompt_id: String(prompt.id),
         brand_mentioned: brandMentioned,
         brand_mention_context: brandMentioned
@@ -1465,7 +1463,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
           output_tokens: usage.outputTokens,
           estimated_cost_cents: estimateGeminiCostCents(usage.inputTokens, usage.outputTokens)
         }
-      });
+      };
     } catch (error) {
       if (error?.name === 'AbortError') throw new Error('AI_TIMEOUT');
       if (error instanceof SyntaxError) throw new Error('AI_INVALID_JSON');
@@ -1474,9 +1472,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     } finally {
       clearTimeout(timeout);
     }
-  }
-
-  return results;
+  }));
 }
 
 async function generateAeoRecommendations(context) {

@@ -3,8 +3,8 @@ function openaiModel() {
 }
 
 function openaiTimeout() {
-  const value = Number(process.env.OPENAI_TIMEOUT || 60000);
-  return Number.isFinite(value) && value > 0 ? value : 60000;
+  const value = Number(process.env.OPENAI_TIMEOUT || 25000);
+  return Number.isFinite(value) && value > 0 ? value : 25000;
 }
 
 function openaiKeyEnding() {
@@ -170,9 +170,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     throw createOpenAiError('OPENAI_INVALID_KEY_FORMAT', 'OPENAI_API_KEY does not look like an OpenAI API key.', '');
   }
 
-  const results = [];
-
-  for (const prompt of prompts) {
+  return Promise.all(prompts.map(async (prompt) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), openaiTimeout());
 
@@ -188,7 +186,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
       const competitorMentions = competitorMentionsFor(responseText, competitors);
       const usage = tokenUsage(payload);
 
-      results.push({
+      return {
         prompt_id: String(prompt.id),
         brand_mentioned: brandMentioned,
         brand_mention_context: brandMentioned ? 'Mentioned in ChatGPT response.' : 'Not mentioned in ChatGPT response.',
@@ -204,7 +202,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
           output_tokens: usage.outputTokens,
           estimated_cost_cents: estimateCostCents(usage.inputTokens, usage.outputTokens)
         }
-      });
+      };
     } catch (error) {
       if (error?.name === 'AbortError') {
         throw new Error('OPENAI_TIMEOUT');
@@ -214,9 +212,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     } finally {
       clearTimeout(timeout);
     }
-  }
-
-  return results;
+  }));
 }
 
 function getProviderDiagnostics() {

@@ -482,20 +482,30 @@ function mergeVisibilityResults(existing, next) {
 
 async function analyzePromptVisibilitySafely(context, prompts, competitors, analysis, options = {}) {
   const promptBatches = chunkArray(prompts, refreshVisibilityBatchSize());
+
+  // Batches used to be awaited one after another, which meant total latency
+  // scaled with the number of batches on top of the provider fan-out inside
+  // each one. Each batch is independent (its own try/catch, its own partial
+  // failure), so running them concurrently is safe and keeps overall latency
+  // roughly flat regardless of prompt count.
+  const settledBatches = await Promise.allSettled(
+    promptBatches.map((batch) => AIService.analyzePromptVisibility(context.access, batch, competitors, analysis, options))
+  );
+
   let visibilityResults = [];
   const errors = [];
 
-  for (const batch of promptBatches) {
-    try {
-      const batchResults = await AIService.analyzePromptVisibility(context.access, batch, competitors, analysis, options);
-      visibilityResults = mergeVisibilityResults(visibilityResults, batchResults);
-    } catch (error) {
-      errors.push(error);
-      console.warn(
-        `Aimate visibility batch failed: company=${context.access.company_id}, prompts=${batch.length}, code=${error?.message || error?.code || 'unknown'}, providerStatus=${error?.providerStatus || ''}`
-      );
+  settledBatches.forEach((outcome, index) => {
+    if (outcome.status === 'fulfilled') {
+      visibilityResults = mergeVisibilityResults(visibilityResults, outcome.value);
+      return;
     }
-  }
+
+    errors.push(outcome.reason);
+    console.warn(
+      `Aimate visibility batch failed: company=${context.access.company_id}, prompts=${promptBatches[index].length}, code=${outcome.reason?.message || outcome.reason?.code || 'unknown'}, providerStatus=${outcome.reason?.providerStatus || ''}`
+    );
+  });
 
   if (!visibilityResults.length && errors.length) {
     throw errors[0];

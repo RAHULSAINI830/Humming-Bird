@@ -15,7 +15,7 @@ function providerTimeout(providerName) {
   if (providerName === 'openai') return OpenAIProvider.openaiTimeout();
   if (providerName === 'claude') return ClaudeProvider.claudeTimeout();
   if (providerName === 'perplexity') return PerplexityProvider.perplexityTimeout();
-  return 60000;
+  return 25000;
 }
 
 async function callProviderJson(providerName, prompt, options = {}) {
@@ -450,7 +450,10 @@ function mergeProviderResults(baseResults, providerResults, providerName) {
       }
     }
 
-    current.provider_usage = [...(current.provider_usage || []), ...(providerResult.provider_usage ? [providerResult.provider_usage] : [])];
+    const existingUsage = Array.isArray(current.provider_usage)
+      ? current.provider_usage
+      : (current.provider_usage ? [current.provider_usage] : []);
+    current.provider_usage = [...existingUsage, ...(providerResult.provider_usage ? [providerResult.provider_usage] : [])];
     resultByPrompt.set(promptId, current);
   });
 
@@ -465,38 +468,30 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
   const promptsFor = (providerName) => initialProviderBootstrap
     ? prompts
     : promptSliceForProvider(prompts, providerControls, providerName);
-  let results = [];
-  const errors = [];
-  const failedProviders = [];
+
+  // Providers used to be awaited one after another (Gemini, then OpenAI, then
+  // Perplexity, then Claude), which made total latency the *sum* of every
+  // provider's response time instead of the slowest one. Firing them
+  // concurrently and merging in this same fixed order once they all settle
+  // keeps the exact same result precedence while cutting wall-clock time
+  // roughly 4x.
+  const providerTasks = [];
 
   if (shouldRunProvider(providerControls, 'gemini', refreshType, initialProviderBootstrap)) {
-    try {
-      results = (await GeminiProvider.analyzePromptVisibility(
-        company,
-        promptsFor('gemini'),
-        competitors,
-        analysis
-      )).map((result) => ({
-        ...result,
-        gemini_response_summary: result.gemini_response_summary || result.ai_response_summary || 'NA'
-      }));
-    } catch (error) {
-      failedProviders.push('gemini');
-      errors.push(error);
-    }
+    providerTasks.push({
+      name: 'gemini',
+      promise: GeminiProvider.analyzePromptVisibility(company, promptsFor('gemini'), competitors, analysis)
+    });
   }
 
   if (shouldRunProvider(providerControls, 'openai', refreshType, initialProviderBootstrap)) {
     const openAiPrompts = promptsFor('openai');
 
     if (openAiPrompts.length && process.env.OPENAI_API_KEY) {
-      try {
-        const openAiResults = await OpenAIProvider.analyzePromptVisibility(company, openAiPrompts, competitors, analysis);
-        results = mergeProviderResults(results, openAiResults, 'openai');
-      } catch (error) {
-        failedProviders.push('openai');
-        errors.push(error);
-      }
+      providerTasks.push({
+        name: 'openai',
+        promise: OpenAIProvider.analyzePromptVisibility(company, openAiPrompts, competitors, analysis)
+      });
     }
   }
 
@@ -504,13 +499,10 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     const perplexityPrompts = promptsFor('perplexity');
 
     if (perplexityPrompts.length && process.env.PERPLEXITY_API_KEY) {
-      try {
-        const perplexityResults = await PerplexityProvider.analyzePromptVisibility(company, perplexityPrompts, competitors, analysis);
-        results = mergeProviderResults(results, perplexityResults, 'perplexity');
-      } catch (error) {
-        failedProviders.push('perplexity');
-        errors.push(error);
-      }
+      providerTasks.push({
+        name: 'perplexity',
+        promise: PerplexityProvider.analyzePromptVisibility(company, perplexityPrompts, competitors, analysis)
+      });
     }
   }
 
@@ -518,15 +510,37 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis, 
     const claudePrompts = promptsFor('claude');
 
     if (claudePrompts.length && (process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY)) {
-      try {
-        const claudeResults = await ClaudeProvider.analyzePromptVisibility(company, claudePrompts, competitors, analysis);
-        results = mergeProviderResults(results, claudeResults, 'claude');
-      } catch (error) {
-        failedProviders.push('claude');
-        errors.push(error);
-      }
+      providerTasks.push({
+        name: 'claude',
+        promise: ClaudeProvider.analyzePromptVisibility(company, claudePrompts, competitors, analysis)
+      });
     }
   }
+
+  const settledProviders = await Promise.allSettled(providerTasks.map((task) => task.promise));
+  let results = [];
+  const errors = [];
+  const failedProviders = [];
+
+  providerTasks.forEach((task, index) => {
+    const outcome = settledProviders[index];
+
+    if (outcome.status === 'rejected') {
+      failedProviders.push(task.name);
+      errors.push(outcome.reason);
+      return;
+    }
+
+    if (task.name === 'gemini') {
+      results = outcome.value.map((result) => ({
+        ...result,
+        gemini_response_summary: result.gemini_response_summary || result.ai_response_summary || 'NA'
+      }));
+      return;
+    }
+
+    results = mergeProviderResults(results, outcome.value, task.name);
+  });
 
   if (initialProviderBootstrap && failedProviders.length && !allowPartialProviderBootstrap) {
     const error = errors[0] || new Error('AI_PROVIDER_BOOTSTRAP_FAILED');

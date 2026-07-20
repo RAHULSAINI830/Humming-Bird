@@ -3,8 +3,8 @@ function perplexityModel() {
 }
 
 function perplexityTimeout() {
-  const value = Number(process.env.PERPLEXITY_TIMEOUT || 60000);
-  return Number.isFinite(value) && value > 0 ? value : 60000;
+  const value = Number(process.env.PERPLEXITY_TIMEOUT || 25000);
+  return Number.isFinite(value) && value > 0 ? value : 25000;
 }
 
 function perplexityKeyEnding() {
@@ -198,9 +198,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     throw new Error('PERPLEXITY_MISSING_KEY');
   }
 
-  const results = [];
-
-  for (const prompt of prompts) {
+  return Promise.all(prompts.map(async (prompt) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), perplexityTimeout());
 
@@ -216,7 +214,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
       const competitorMentions = competitorMentionsFor(responseText, competitors);
       const usage = tokenUsage(payload);
 
-      results.push({
+      return {
         prompt_id: String(prompt.id),
         brand_mentioned: brandMentioned,
         brand_mention_context: brandMentioned ? 'Mentioned in Perplexity response.' : 'Not mentioned in Perplexity response.',
@@ -232,7 +230,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
           output_tokens: usage.outputTokens,
           estimated_cost_cents: estimateCostCents(payload, usage.inputTokens, usage.outputTokens)
         }
-      });
+      };
     } catch (error) {
       if (error?.name === 'AbortError') {
         throw new Error('PERPLEXITY_TIMEOUT');
@@ -242,9 +240,7 @@ async function analyzePromptVisibility(company, prompts, competitors, analysis) 
     } finally {
       clearTimeout(timeout);
     }
-  }
-
-  return results;
+  }));
 }
 
 function getProviderDiagnostics() {

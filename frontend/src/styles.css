@@ -47,6 +47,7 @@ button {
 .brand-logo {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-width: 0;
 }
 
@@ -781,18 +782,20 @@ button {
 .sidebar-full-logo {
   display: none;
   min-width: 0;
+  width: 100%;
   opacity: 0;
-  transform: translateX(-8px);
+  transform: translateY(-1px);
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
 .sidebar-full-logo .brand-logo {
-  width: 214px;
+  width: 100%;
 }
 
 .sidebar:hover .sidebar-brand,
 .sidebar.is-open .sidebar-brand {
-  justify-content: flex-start;
+  justify-content: center;
+  width: 100%;
 }
 
 .sidebar:hover .sidebar-favicon,
@@ -805,7 +808,7 @@ button {
 .sidebar.is-open .sidebar-full-logo {
   display: block;
   opacity: 1;
-  transform: translateX(0);
+  transform: translateY(0);
 }
 
 .sidebar-brand strong {
