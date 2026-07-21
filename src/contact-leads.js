@@ -4,6 +4,12 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 let cachedGoogleToken = null;
 
+function integrationError(message, code) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 function envValue(name, fallback = '') {
   const value = String(process.env[name] || fallback).trim();
   const hasMatchingQuotes = (value.startsWith('"') && value.endsWith('"'))
@@ -20,7 +26,7 @@ function requiredGoogleConfig() {
   };
 
   if (!config.spreadsheetId || !config.serviceAccountEmail || !config.privateKey) {
-    throw new Error('Google Sheets lead storage is not configured');
+    throw integrationError('Google Sheets lead storage is not configured', 'GOOGLE_SHEETS_NOT_CONFIGURED');
   }
 
   return config;
@@ -48,7 +54,12 @@ async function googleAccessToken(config) {
   const signer = crypto.createSign('RSA-SHA256');
   signer.update(unsignedToken);
   signer.end();
-  const signature = signer.sign(config.privateKey, 'base64url');
+  let signature;
+  try {
+    signature = signer.sign(config.privateKey, 'base64url');
+  } catch {
+    throw integrationError('Google service-account private key is invalid', 'GOOGLE_PRIVATE_KEY_INVALID');
+  }
 
   const response = await fetch(GOOGLE_TOKEN_URL, {
     method: 'POST',
@@ -61,7 +72,10 @@ async function googleAccessToken(config) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok || !body.access_token) {
-    throw new Error(body.error_description || 'Failed to authenticate with Google Sheets');
+    throw integrationError(
+      body.error_description || 'Failed to authenticate with Google Sheets',
+      'GOOGLE_AUTH_FAILED'
+    );
   }
 
   cachedGoogleToken = {
@@ -93,7 +107,10 @@ async function appendContactLead(lead) {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(body.error?.message || 'Failed to save the enquiry to Google Sheets');
+    throw integrationError(
+      body.error?.message || 'Failed to save the enquiry to Google Sheets',
+      'GOOGLE_SHEETS_WRITE_FAILED'
+    );
   }
 
   return body;

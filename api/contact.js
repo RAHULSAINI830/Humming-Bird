@@ -145,7 +145,8 @@ module.exports = async function contactHandler(req, res) {
     sendJson(res, {
       error: statusCode === 400
         ? 'Invalid request body.'
-        : 'We could not save your enquiry. Please try again shortly.'
+        : 'We could not save your enquiry. Please try again shortly.',
+      ...(statusCode === 500 ? { code: error.code || 'CONTACT_DELIVERY_FAILED' } : {})
     }, statusCode);
   }
 };
