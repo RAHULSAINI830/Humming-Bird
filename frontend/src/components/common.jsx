@@ -52,7 +52,7 @@ export function LoadingScreen() {
   );
 }
 
-export function SetupGenerationScreen({ session, setupStatus, loading, error, onAction, onLogout }) {
+export function SetupGenerationScreen({ session, setupStatus, loading, error, onAction, onLogout, showComplete, onEnterDashboard }) {
   const steps = setupStatus?.steps || [
     { key: 'analysis', label: 'Business analysis', complete: false, description: 'Analyze company website and business profile.' },
     { key: 'competitors', label: 'Competitor discovery', complete: false, description: 'Discover related companies for comparison.' },
@@ -123,6 +123,42 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
         </div>
 
         <article className="setup-wizard-card">
+          {showComplete ? (
+            <div className="setup-wizard-complete">
+              <div className="setup-complete-badge" aria-hidden="true">
+                <svg viewBox="0 0 52 52">
+                  <circle className="setup-complete-badge-ring" cx="26" cy="26" r="23" />
+                  <path className="setup-complete-badge-check" fill="none" d="M15 27l7.5 7.5L37 19" />
+                </svg>
+                <i /><i /><i /><i /><i /><i />
+              </div>
+              <p className="eyebrow">Workspace ready</p>
+              <h1>{session.selectedCompanyName} is ready to go</h1>
+              <p className="setup-wizard-subtitle setup-complete-subtitle">
+                Aimate generated your business analysis, competitors, prompts, and first AI visibility check.
+              </p>
+
+              <div className="setup-complete-stats">
+                <div>
+                  <strong>{competitors.length}</strong>
+                  <span>Competitors tracked</span>
+                </div>
+                <div>
+                  <strong>{prompts.length}</strong>
+                  <span>Prompts saved</span>
+                </div>
+                <div>
+                  <strong>{setupStatus?.counts?.checkedPrompts || prompts.length}</strong>
+                  <span>Prompts checked</span>
+                </div>
+              </div>
+
+              <button className="setup-generate-button" type="button" onClick={onEnterDashboard}>
+                Enter your dashboard
+              </button>
+            </div>
+          ) : (
+            <>
           <div className="setup-wizard-top">
             <div className="setup-wizard-heading">
               <p className="eyebrow">Workspace preparation · Step {activeStepIndex + 1} of {steps.length}</p>
@@ -292,6 +328,8 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               ) : (
                 <div className="info-notice">Your role can view the platform after an authorized user generates setup data.</div>
               )}
+            </>
+          )}
             </>
           )}
         </article>

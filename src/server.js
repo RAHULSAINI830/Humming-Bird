@@ -2657,13 +2657,7 @@ async function handleCreateWorkspace(req, res) {
   return sendJson(res, sessionPayload(nextSession, { includeSetupStatus: true }), 201);
 }
 
-function handleDashboard(req, res) {
-  const context = requireSelectedCompany(req, res);
-
-  if (!context) {
-    return null;
-  }
-
+function dashboardPayload(context) {
   const { session, access } = context;
   const latestAnalysis = getLatestBusinessAnalysis(access.company_id);
   const completedAnalysis = getLatestCompletedBusinessAnalysis(access.company_id);
@@ -2672,7 +2666,7 @@ function handleDashboard(req, res) {
   const competitors = listCompanyCompetitors(access.company_id);
   const visibilitySummary = dashboardVisibilitySummary(prompts, access, visibilitySnapshots);
 
-  return sendJson(res, {
+  return {
     session: sessionPayload(session),
     company: access,
     setupProgress: setupProgress(access),
@@ -2686,7 +2680,17 @@ function handleDashboard(req, res) {
       brandMentioned: visibilitySummary.brandMentioned,
       citations: visibilitySummary.citations
     }
-  });
+  };
+}
+
+function handleDashboard(req, res) {
+  const context = requireSelectedCompany(req, res);
+
+  if (!context) {
+    return null;
+  }
+
+  return sendJson(res, dashboardPayload(context));
 }
 
 function handleSetupStatus(req, res) {
@@ -2832,7 +2836,20 @@ async function handleSetupRunChecks(req, res) {
       sourceType: 'aimate-ai'
     });
     logProviderUsageFromResults(companyId, run.runId, visibilityResults);
-    return sendJson(res, setupPipelineStatus(companyId));
+
+    const pipelineStatus = setupPipelineStatus(companyId);
+
+    // Setup just finished writing this company's data in this same request.
+    // A separate follow-up /api/dashboard request can land on a different
+    // serverless instance with its own (stale) copy of the ephemeral SQLite
+    // file, showing old data until a later request happens to hit an
+    // instance with the write. Returning the dashboard payload from this
+    // same request guarantees the frontend gets data that reflects what was
+    // just written, no follow-up request required.
+    return sendJson(res, {
+      ...pipelineStatus,
+      dashboard: pipelineStatus.ready ? dashboardPayload(context) : null
+    });
   } catch (error) {
     console.error(error);
     return sendJson(res, aiErrorResponse(error, 'AI visibility checks failed. Please retry.'), 500);

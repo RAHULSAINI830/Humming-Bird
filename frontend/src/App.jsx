@@ -66,6 +66,7 @@ function App() {
   const [setupStatusLoading, setSetupStatusLoading] = useState(false);
   const [setupLoading, setSetupLoading] = useState(false);
   const [setupError, setSetupError] = useState('');
+  const [showSetupComplete, setShowSetupComplete] = useState(false);
   const [notice, setNotice] = useState('');
   const [loadingViews, setLoadingViews] = useState({});
   const [loadedViews, setLoadedViews] = useState({});
@@ -278,6 +279,7 @@ function App() {
     setStatus('guest');
     setNotice('');
     setDashboard(null);
+    setShowSetupComplete(false);
     setActiveView(DEFAULT_ACTIVE_VIEW);
   }
 
@@ -289,6 +291,7 @@ function App() {
     setSession(data);
     setSetupStatus(data.setupStatus || null);
     setSetupStatusLoading(false);
+    setShowSetupComplete(false);
     setDashboard(null);
     setBusinessAnalysis(null);
     setAeoRecommendations(null);
@@ -303,6 +306,11 @@ function App() {
     setActiveView('dashboard');
   }
 
+  function enterDashboardFromSetup() {
+    setShowSetupComplete(false);
+    setActiveView('dashboard');
+  }
+
   async function handleSetupAction(action, payload = {}) {
     setSetupLoading(action);
     setSetupError('');
@@ -311,10 +319,13 @@ function App() {
       const result = await api(`/api/setup/${action}`, { method: 'POST', body: JSON.stringify(payload) });
       setSetupStatus(result);
       if (result.ready) {
-        const dashboardResult = await api('/api/dashboard');
+        // Prefer the dashboard payload embedded in this same response over a
+        // separate follow-up request, which could land on a different
+        // serverless instance and show stale data.
+        const dashboardResult = result.dashboard || await api('/api/dashboard');
         setDashboard(dashboardResult);
         setLoadedViews((current) => ({ ...current, dashboard: true }));
-        setActiveView('dashboard');
+        setShowSetupComplete(true);
       }
     } catch (error) {
       if (error.data?.limits) {
@@ -362,6 +373,7 @@ function App() {
     setSession(data);
     setSetupStatus(data.setupStatus || null);
     setSetupStatusLoading(false);
+    setShowSetupComplete(false);
     setDashboard(null);
     setBusinessAnalysis(null);
     setAeoRecommendations(null);
@@ -411,7 +423,7 @@ function App() {
     return <LoadingScreen />;
   }
 
-  if (!session.isDeveloper && session.selectedCompanyId && !setupIsReadyForPortal(setupStatus)) {
+  if (!session.isDeveloper && session.selectedCompanyId && (!setupIsReadyForPortal(setupStatus) || showSetupComplete)) {
     return (
       <SetupGenerationScreen
         session={session}
@@ -420,6 +432,8 @@ function App() {
         error={setupError}
         onAction={handleSetupAction}
         onLogout={handleLogout}
+        showComplete={showSetupComplete}
+        onEnterDashboard={enterDashboardFromSetup}
       />
     );
   }
