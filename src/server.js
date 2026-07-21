@@ -3453,7 +3453,7 @@ async function handleGenerateAeoRecommendations(req, res) {
     return handleAeoRecommendations(req, res);
   } catch (error) {
     console.error(error);
-    return sendJson(res, { error: 'Aimate could not generate the AEO action plan. Please retry.' }, 500);
+    return sendJson(res, aiErrorResponse(error, 'Aimate could not generate the AEO action plan. Please retry.'), aiErrorStatus(error));
   }
 }
 

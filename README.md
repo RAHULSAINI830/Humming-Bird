@@ -79,6 +79,59 @@ For Vercel, always set `AIMATE_SESSION_SECRET` so signed login cookies remain va
 
 For local development, `.env` is loaded automatically and is ignored by git.
 
+## Render deployment
+
+This repo includes a Render Blueprint in `render.yaml`.
+
+Recommended Render flow:
+
+1. Push this repo to GitHub.
+2. In Render, choose **New → Blueprint**.
+3. Connect the GitHub repo.
+4. Render will create:
+   - `aimate-app` web service
+   - `aimate-daily-refresh` cron job
+5. Add the required secret environment variables in Render before the first production run.
+
+Core Render environment variables:
+
+```bash
+PUBLIC_APP_URL=https://your-render-domain.onrender.com
+AIMATE_APP_URL=https://your-render-domain.onrender.com
+AIMATE_SESSION_SECRET=use-a-long-random-secret
+DATABASE_URL=your_postgres_connection_string
+CRON_SECRET=use-the-same-secret-for-web-and-cron
+SIGNUP_MODE=invite
+SIGNUP_INVITE_CODE=your-private-signup-code
+```
+
+AI provider variables:
+
+```bash
+GEMINI_API_KEY=your_gemini_key
+GEMINI_MODEL=gemini-flash-lite-latest
+GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-2.0-flash-lite,gemini-flash-latest
+OPENAI_API_KEY=your_openai_key
+CLAUDE_API_KEY=your_claude_key
+PERPLEXITY_API_KEY=your_perplexity_key
+```
+
+Google Search Console variables:
+
+```bash
+GOOGLE_CLIENT_ID=your_google_web_client_id
+GOOGLE_CLIENT_SECRET=your_google_web_client_secret
+GOOGLE_REDIRECT_URI=https://your-render-domain.onrender.com/api/google/callback
+GOOGLE_TOKEN_ENCRYPTION_KEY=use-a-long-random-token-encryption-key
+```
+
+Important Render notes:
+
+- Use a hosted Postgres database through `DATABASE_URL` for production. Do not rely on local SQLite on Render because service filesystems can be ephemeral.
+- Add the Render callback URL to Google Cloud OAuth Authorized Redirect URIs.
+- The cron job calls `/api/cron/daily-refresh` daily using `CRON_SECRET`.
+- Keep `.env`, SQLite databases, generated docs, and local output folders out of deployment; `.renderignore` excludes them.
+
 ## Landing-page lead capture
 
 The public `POST /api/contact` endpoint validates enquiries from Hiaimate and

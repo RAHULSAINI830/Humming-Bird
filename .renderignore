@@ -1,0 +1,10 @@
+.env
+.claude/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+out/
+*.docx
+data/*.sqlite
+.DS_Store
+npm-debug.log*

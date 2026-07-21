@@ -24,9 +24,9 @@ function claudeMaxTokens() {
 }
 
 function claudeAeoMaxTokens() {
-  const value = Number(process.env.CLAUDE_AEO_MAX_TOKENS || claudeMaxTokens());
-  const normalized = Number.isFinite(value) && value > 0 ? value : claudeMaxTokens();
-  return Math.min(Math.max(normalized, 2600), 4096);
+  const value = Number(process.env.CLAUDE_AEO_MAX_TOKENS || 0);
+  const normalized = Number.isFinite(value) && value > 0 ? value : 8192;
+  return Math.min(Math.max(normalized, 4096), 8192);
 }
 
 function claudeKeyEnding() {
@@ -298,7 +298,7 @@ async function callClaude(prompt, signal, options = {}) {
     signal,
     body: JSON.stringify({
       model: claudeModel(),
-      max_tokens: Math.min(Math.max(maxTokens, 1), 4096),
+      max_tokens: Math.min(Math.max(maxTokens, 1), 16000),
       messages: [
         {
           role: 'user',

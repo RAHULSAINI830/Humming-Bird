@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: aimate-app
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci && npm --prefix frontend ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: AIMATE_SESSION_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-lite-latest
+      - key: GEMINI_FALLBACK_MODELS
+        value: gemini-3.1-flash-lite,gemini-2.0-flash-lite,gemini-flash-latest
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
+      - key: PERPLEXITY_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: GOOGLE_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: SIGNUP_MODE
+        value: invite
+      - key: SIGNUP_INVITE_CODE
+        sync: false
+
+  - type: cron
+    name: aimate-daily-refresh
+    runtime: node
+    plan: starter
+    region: oregon
+    schedule: "0 2 * * *"
+    buildCommand: npm ci
+    startCommand: node scripts/render-daily-refresh.js
+    envVars:
+      - key: AIMATE_APP_URL
+        sync: false
+      - key: CRON_SECRET
+        sync: false
