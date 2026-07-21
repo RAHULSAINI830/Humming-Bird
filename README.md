@@ -79,6 +79,25 @@ For Vercel, always set `AIMATE_SESSION_SECRET` so signed login cookies remain va
 
 For local development, `.env` is loaded automatically and is ignored by git.
 
+## Landing-page lead capture
+
+The public `POST /api/contact` endpoint validates enquiries from Hiaimate and
+appends them to a Google Sheet. Create a `Leads` tab with the columns
+`Received at`, `Name`, `Email`, `Website`, and `Message`, share it with the
+service-account email as an Editor, and set these variables in Vercel:
+
+```bash
+LANDING_PAGE_ORIGINS=https://www.hiaimate.com,https://hiaimate.com
+GOOGLE_SHEET_ID=your_google_spreadsheet_id
+GOOGLE_SHEET_RANGE=Leads!A:E
+GOOGLE_SERVICE_ACCOUNT_EMAIL=sheets-writer@project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+```
+
+Optional Resend notifications use `RESEND_API_KEY`, `CONTACT_EMAIL_FROM`, and
+`CONTACT_EMAIL_TO`. Google credentials remain server-side and must never use a
+`VITE_` prefix.
+
 ## Gemini setup
 
 Business Analysis uses the platform Gemini key from `.env`:

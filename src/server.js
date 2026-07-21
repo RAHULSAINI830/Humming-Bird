@@ -87,6 +87,7 @@ const {
 } = require('./db');
 const { hashPassword, verifyPassword } = require('./auth');
 const AIService = require('./services/ai/ai-service');
+const { captureContactLead } = require('./contact-leads');
 
 const PORT = Number(process.env.PORT || 3000);
 const SESSION_COOKIE_NAME = 'hbsid';
@@ -117,6 +118,12 @@ const SIGNUP_ALLOWED_DOMAINS = String(process.env.SIGNUP_ALLOWED_DOMAINS || '')
   .split(',')
   .map((domain) => domain.trim().toLowerCase().replace(/^@/, ''))
   .filter(Boolean);
+const LANDING_PAGE_ORIGINS = new Set(
+  String(process.env.LANDING_PAGE_ORIGINS || 'https://www.hiaimate.com,https://hiaimate.com,http://localhost:5173')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean)
+);
 
 initDatabase();
 
@@ -321,6 +328,30 @@ function enforceRateLimit(res, key, windowSeconds, max) {
   }
 
   return true;
+}
+
+function handleContactCors(req, res) {
+  const origin = String(req.headers.origin || '').replace(/\/$/, '');
+
+  if (origin && !LANDING_PAGE_ORIGINS.has(origin)) {
+    sendJson(res, { error: 'Origin is not allowed' }, 403);
+    return true;
+  }
+
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, { 'Cache-Control': 'no-store' });
+    res.end();
+    return true;
+  }
+
+  return false;
 }
 
 const AI_RATE_LIMIT_WINDOW_SECONDS = 3600;
@@ -627,6 +658,42 @@ function normalize(value) {
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+async function handleContactLead(req, res) {
+  const body = await readJson(req);
+  const input = {
+    name: normalize(body.name),
+    email: normalize(body.email).toLowerCase(),
+    website: normalize(body.website),
+    message: normalize(body.message),
+    fax: normalize(body.fax)
+  };
+  const errors = {};
+
+  if (input.name.length < 2 || input.name.length > 100) errors.name = 'Enter your name.';
+  if (!isValidEmail(input.email) || input.email.length > 254) errors.email = 'Enter a valid work email.';
+  if (input.message.length > 2000) errors.message = 'Message must be 2,000 characters or fewer.';
+
+  try {
+    const website = new URL(input.website);
+    if (!['http:', 'https:'].includes(website.protocol) || input.website.length > 2048) {
+      errors.website = 'Enter a complete HTTP or HTTPS website URL.';
+    }
+  } catch {
+    errors.website = 'Enter a complete website URL.';
+  }
+
+  if (input.fax) {
+    return sendJson(res, { message: 'Thanks — your enquiry has been received.' }, 201);
+  }
+
+  if (Object.keys(errors).length) {
+    return sendJson(res, { error: 'Please check your details and try again.', errors }, 400);
+  }
+
+  await captureContactLead(input);
+  return sendJson(res, { message: 'Thanks — your enquiry has been received.' }, 201);
 }
 
 function getAssignableUserRoles(currentRoleName) {
@@ -4375,6 +4442,10 @@ async function router(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   try {
+    if (url.pathname === '/api/contact' && handleContactCors(req, res)) {
+      return null;
+    }
+
     if (url.pathname.startsWith('/api/') && url.pathname !== '/api/cron/daily-refresh') {
       if (!enforceRateLimit(res, `ip:${getClientIp(req)}`, 60, 240)) {
         return null;
@@ -4383,6 +4454,13 @@ async function router(req, res) {
 
     if (req.method === 'GET' && url.pathname === '/api/health') {
       return sendJson(res, { ok: true, app: 'aimate', layer: 'backend-api', database: dbPath });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/contact') {
+      if (!enforceRateLimit(res, `contact:${getClientIp(req)}`, 15 * 60, 5)) {
+        return null;
+      }
+      return handleContactLead(req, res);
     }
 
     if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/api/cron/daily-refresh') {
