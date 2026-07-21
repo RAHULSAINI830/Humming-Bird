@@ -595,7 +595,8 @@ function migrate() {
     ['main_services', 'TEXT'],
     ['known_competitors', 'TEXT'],
     ['brand_description', 'TEXT'],
-    ['target_audience', 'TEXT']
+    ['target_audience', 'TEXT'],
+    ['website_snapshot_json', 'TEXT']
   ].forEach(([columnName, columnType]) => {
     if (!analysisColumns.includes(columnName)) {
       db.exec(`ALTER TABLE business_analyses ADD COLUMN ${columnName} ${columnType};`);
@@ -1744,6 +1745,7 @@ function completeBusinessAnalysis(analysisId, analysis) {
       known_competitors = ?,
       brand_description = ?,
       target_audience = ?,
+      website_snapshot_json = ?,
       analysis_status = 'completed',
       error_message = NULL,
       source_type = 'gemini',
@@ -1763,6 +1765,7 @@ function completeBusinessAnalysis(analysisId, analysis) {
     analysis.known_competitors,
     analysis.brand_description,
     analysis.target_audience,
+    analysis.websiteSnapshot ? JSON.stringify(analysis.websiteSnapshot) : null,
     analysisId
   );
 }

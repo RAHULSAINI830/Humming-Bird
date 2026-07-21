@@ -1257,7 +1257,7 @@ async function generateBusinessAnalysis(company) {
       throw new Error('AI_INVALID_JSON');
     }
 
-    return validateBusinessAnalysisPayload(JSON.parse(text));
+    return { ...validateBusinessAnalysisPayload(JSON.parse(text)), websiteSnapshot };
   } catch (error) {
     if (error?.name === 'AbortError') {
       throw new Error('AI_TIMEOUT');
@@ -1277,12 +1277,32 @@ async function generateBusinessAnalysis(company) {
   }
 }
 
+// The business analysis step already fetches and saves a snapshot of the
+// company's website. Reuse it here instead of re-fetching and re-scanning
+// the same site (which can involve dozens of JS bundle requests) every time
+// prompts are (re)generated for the same company.
+function resolveWebsiteSnapshot(company, analysis) {
+  if (analysis?.website_snapshot_json) {
+    try {
+      const parsed = JSON.parse(analysis.website_snapshot_json);
+
+      if (parsed && typeof parsed === 'object') {
+        return Promise.resolve(parsed);
+      }
+    } catch {
+      // Fall through to a fresh fetch below.
+    }
+  }
+
+  return extractWebsiteSnapshot(company.website_url);
+}
+
 async function generateCompanyPrompts(company, analysis) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('AI_MISSING_KEY');
   }
 
-  const websiteSnapshot = await extractWebsiteSnapshot(company.website_url);
+  const websiteSnapshot = await resolveWebsiteSnapshot(company, analysis);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), geminiTimeout());
 
@@ -1526,6 +1546,7 @@ module.exports = {
   testProviderConnection,
   getProviderDiagnostics,
   extractWebsiteSnapshot,
+  resolveWebsiteSnapshot,
   buildBusinessAnalysisPrompt,
   validateBusinessAnalysisPayload,
   buildPromptGenerationPrompt,

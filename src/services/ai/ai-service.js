@@ -121,7 +121,7 @@ async function generateBusinessAnalysis(company) {
         { maxTokens: 2200 }
       );
 
-      return GeminiProvider.validateBusinessAnalysisPayload(payload);
+      return { ...GeminiProvider.validateBusinessAnalysisPayload(payload), websiteSnapshot };
     }
   );
 }
@@ -131,7 +131,7 @@ async function generateCompanyPrompts(company, analysis) {
     'prompt-generation',
     () => GeminiProvider.generateCompanyPrompts(company, analysis),
     async (providerName) => {
-      const websiteSnapshot = await GeminiProvider.extractWebsiteSnapshot(company.website_url);
+      const websiteSnapshot = await GeminiProvider.resolveWebsiteSnapshot(company, analysis);
       const payload = await callProviderJson(
         providerName,
         GeminiProvider.buildPromptGenerationPrompt(company, analysis, websiteSnapshot),
