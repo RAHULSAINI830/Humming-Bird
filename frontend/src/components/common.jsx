@@ -59,8 +59,6 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
     { key: 'prompts', label: 'Prompt generation', complete: false, description: 'Create buyer-intent AI search prompts.' },
     { key: 'checks', label: 'AI visibility checks', complete: false, description: 'Send prompts to Aimate and save responses.' }
   ];
-  const completed = steps.filter((step) => step.complete).length;
-  const percent = Math.round((completed / steps.length) * 100);
   const canGenerate = ['Developer', 'Super Admin', 'Business Owner', 'Marketing Manager'].includes(session.selectedRoleName);
   const [competitorForm, setCompetitorForm] = useState({});
   const [promptForm, setPromptForm] = useState({ promptCategory: 'Manual', promptIntent: 'Manual tracking' });
@@ -89,6 +87,7 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
               ? 'prompts'
               : 'done';
   const activeStepIndex = Math.max(0, steps.findIndex((step) => step.key === activeStep));
+  const activeStepMeta = steps[activeStepIndex];
   const loadingDetails = setupLoadingDetails(loading || activeStep);
 
   async function addCompetitor(event) {
@@ -123,199 +122,179 @@ export function SetupGenerationScreen({ session, setupStatus, loading, error, on
           <button type="button" onClick={onLogout}>Logout</button>
         </div>
 
-        <div className="setup-gate-grid">
-          <article className="setup-gate-hero">
-            <p className="eyebrow">Workspace preparation</p>
-            <h1>Building your AI visibility platform</h1>
-            <p>
-              Before showing the dashboard, Aimate generates real business intelligence, competitors,
-              prompts, and Aimate visibility checks for <strong>{session.selectedCompanyName}</strong>.
-            </p>
-
-            <div className="setup-company-card">
-              <LogoChip name={session.selectedCompanyName || 'Company'} url={session.selectedCompanyLogoUrl} size="large" />
+        <article className="setup-wizard-card">
+          <div className="setup-wizard-top">
+            <div className="setup-wizard-heading">
+              <p className="eyebrow">Workspace preparation · Step {activeStepIndex + 1} of {steps.length}</p>
+              <h1>Building your AI visibility platform</h1>
+              <p className="setup-wizard-subtitle">{activeStepMeta?.description}</p>
+            </div>
+            <div className="setup-company-chip">
+              <LogoChip name={session.selectedCompanyName || 'Company'} url={session.selectedCompanyLogoUrl} />
               <div>
-                <span>Selected workspace</span>
                 <strong>{session.selectedCompanyName}</strong>
                 <small>{session.selectedRoleName}</small>
               </div>
             </div>
+          </div>
 
-            <div className={`setup-progress-track ${loading ? 'is-loading' : ''}`}>
-              <span style={{ width: `${loading ? Math.max(percent, 18) : percent}%` }} />
-            </div>
-            <small>{loading ? 'Generating with Aimate… this can take a little while.' : `${percent}% ready`}</small>
+          <ol className="setup-stepper">
+            {steps.map((step, index) => (
+              <li
+                key={step.key}
+                className={`${step.complete ? 'complete' : ''} ${index === activeStepIndex ? 'active' : ''} ${loading && index === activeStepIndex ? 'running' : ''}`}
+              >
+                <span className="setup-stepper-dot">{step.complete ? '✓' : index + 1}</span>
+                <span className="setup-stepper-label">{step.label}</span>
+              </li>
+            ))}
+          </ol>
 
-            {error ? <div className="notice">{error}</div> : null}
-            {loading ? (
-              <div className="setup-live-status advanced">
-                <div className="setup-live-orb" aria-hidden="true">
-                  <span />
-                  <i />
-                  <i />
-                </div>
-                <div>
-                  <strong>{loadingDetails.title}</strong>
-                  <p>{loadingDetails.text}</p>
-                  <div className="setup-live-provider-row" aria-hidden="true">
-                    {loadingDetails.providers.map((provider) => <em key={provider}>{provider}</em>)}
-                  </div>
-                </div>
+          {error ? <div className="notice">{error}</div> : null}
+
+          {loading ? (
+            <div className="setup-wizard-loading">
+              <div className="setup-loader" aria-hidden="true">
+                <span><SettingsIcon name="sparkles" /></span>
+                <i />
+                <i />
+                <i />
               </div>
-            ) : null}
-
-            {canGenerate ? (
-              <div className="setup-action-stack">
-                {!hasAnalysis ? (
-                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-analysis')} disabled={Boolean(loading)}>
-                    {loading === 'generate-analysis' ? 'Generating business analysis…' : 'Generate business analysis'}
-                  </button>
-                ) : !hasCompetitors ? (
-                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-competitors')} disabled={Boolean(loading) || competitorLimitReached}>
-                    {loading === 'generate-competitors' ? 'Discovering competitors…' : 'Confirm analysis & discover competitors'}
-                  </button>
-                ) : !hasPrompts ? (
-                  <button className="setup-generate-button" type="button" onClick={() => onAction('generate-prompts')} disabled={Boolean(loading) || promptLimitReached}>
-                    {loading === 'generate-prompts' ? 'Generating prompts…' : 'Confirm competitors & generate prompts'}
-                  </button>
-                ) : !hasChecks ? (
-                  <button className="setup-generate-button" type="button" onClick={() => onAction('run-checks')} disabled={Boolean(loading)}>
-                    {loading === 'run-checks' ? 'Generating overview data…' : 'Confirm prompts & generate overview'}
-                  </button>
+              <strong>{loadingDetails.title}</strong>
+              <p>{loadingDetails.text}</p>
+              <div className="setup-live-provider-row" aria-hidden="true">
+                {loadingDetails.providers.map((provider) => <em key={provider}>{provider}</em>)}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="setup-wizard-body">
+                {activeStep === 'analysis' ? (
+                  <div className="setup-wizard-panel">
+                    <div className="setup-review-head">
+                      <p className="eyebrow">Analysis review</p>
+                      <span>{hasAnalysis ? 'Ready to confirm' : 'Not generated'}</span>
+                    </div>
+                    <h2>{analysis?.detected_industry || 'Business analysis'}</h2>
+                    <p>{analysis?.business_summary || 'Generate the business analysis first. You will review it before discovering competitors.'}</p>
+                    {hasAnalysis ? (
+                      <div className="setup-analysis-details">
+                        <div>
+                          <span>Detected services</span>
+                          <strong>{analysis.detected_services || analysis.main_services || 'Not available'}</strong>
+                        </div>
+                        <div>
+                          <span>Target audience</span>
+                          <strong>{analysis.target_audience_summary || analysis.target_audience || 'Not available'}</strong>
+                        </div>
+                        <div>
+                          <span>Service area</span>
+                          <strong>{analysis.service_area_summary || analysis.service_area || 'Not available'}</strong>
+                        </div>
+                        <div>
+                          <span>Positioning</span>
+                          <strong>{analysis.positioning_summary || 'Not available'}</strong>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : activeStep === 'competitors' ? (
+                  <div className="setup-wizard-panel">
+                    <div className="setup-review-head">
+                      <p className="eyebrow">Competitors review</p>
+                      <span>{competitorLimit ? `${competitorLimit.used}/${competitorLimit.limit} competitors` : `${competitors.length} competitors`}</span>
+                    </div>
+                    {competitorLimitReached ? <div className="limit-mini-note">Competitor limit reached. Ask a Developer to increase the limit.</div> : null}
+                    <div className="setup-review-list">
+                      {competitors.map((competitor) => (
+                        <div key={competitor.id}>
+                          <strong>{competitor.competitor_name}</strong>
+                          <small>{competitor.website_url || 'No URL'}</small>
+                          <button type="button" onClick={() => onAction('competitors/remove', { competitorId: competitor.id })} disabled={Boolean(loading)}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                    {hasAnalysis ? (
+                      <form className="setup-mini-form" onSubmit={addCompetitor}>
+                        <input placeholder="Competitor name" value={competitorForm.competitorName || ''} onChange={(event) => setCompetitorForm((current) => ({ ...current, competitorName: event.target.value }))} />
+                        <input placeholder="Website URL" value={competitorForm.websiteUrl || ''} onChange={(event) => setCompetitorForm((current) => ({ ...current, websiteUrl: event.target.value }))} />
+                        <button type="submit" disabled={Boolean(loading) || competitorLimitReached}>Add competitor</button>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : activeStep === 'prompts' ? (
+                  <div className="setup-wizard-panel">
+                    <div className="setup-review-head">
+                      <p className="eyebrow">Prompt review</p>
+                      <span>{promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts` : `${prompts.length} prompts`}</span>
+                    </div>
+                    {promptLimitReached ? <div className="limit-mini-note">Prompt limit reached. Ask a Developer to increase the limit.</div> : null}
+                    <div className="setup-review-list prompts">
+                      {prompts.map((prompt) => (
+                        <div key={prompt.id}>
+                          <strong>{prompt.prompt_text}</strong>
+                          <small>{prompt.prompt_category || 'Prompt'} · {prompt.prompt_intent || 'Intent'}</small>
+                          <button type="button" onClick={() => onAction('prompts/remove', { promptId: prompt.id })} disabled={Boolean(loading)}>Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                    {hasCompetitors ? (
+                      <form className="setup-mini-form prompt-form" onSubmit={addPrompt}>
+                        <input placeholder="Add a prompt" value={promptForm.promptText || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptText: event.target.value }))} />
+                        <input placeholder="Category" value={promptForm.promptCategory || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptCategory: event.target.value }))} />
+                        <input placeholder="Intent" value={promptForm.promptIntent || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptIntent: event.target.value }))} />
+                        <button type="submit" disabled={Boolean(loading) || promptLimitReached}>Add prompt</button>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : activeStep === 'checks' ? (
+                  <div className="setup-wizard-panel setup-checks-ready-card">
+                    <div className="setup-review-head">
+                      <p className="eyebrow">Overview generation</p>
+                      <span>{prompts.length} prompts ready</span>
+                    </div>
+                    <h2>Ready to build your first overview</h2>
+                    <p>
+                      Aimate will now send each saved prompt to every configured AI provider for the first run.
+                      This first setup run does not require Developer refresh permission. Future regenerations will follow
+                      the limits and permissions configured in Developer Admin.
+                    </p>
+                    <div className="setup-check-provider-grid">
+                      <span>Aimate</span>
+                      <span>ChatGPT if connected</span>
+                      <span>Claude if connected</span>
+                      <span>Perplexity if connected</span>
+                    </div>
+                  </div>
                 ) : null}
               </div>
-            ) : (
-              <div className="info-notice">Your role can view the platform after an authorized user generates setup data.</div>
-            )}
-          </article>
 
-          <article className="setup-pipeline-card">
-            <div className="setup-orbit-loader">
-              <span><SettingsIcon name="sparkles" /></span>
-              <i />
-              <i />
-              <i />
-            </div>
-            <div className="setup-step-list">
-              {steps.map((step, index) => (
-                <div className={`${step.complete ? 'complete' : ''} ${index === activeStepIndex ? 'active' : ''} ${loading && index === activeStepIndex ? 'running' : ''}`} key={step.key}>
-                  <b>{step.complete ? '✓' : index + 1}</b>
-                  <span>
-                    <strong>{step.label}</strong>
-                    <small>{step.description}</small>
-                  </span>
+              {canGenerate ? (
+                <div className="setup-wizard-actions">
+                  {!hasAnalysis ? (
+                    <button className="setup-generate-button" type="button" onClick={() => onAction('generate-analysis')} disabled={Boolean(loading)}>
+                      Generate business analysis
+                    </button>
+                  ) : !hasCompetitors ? (
+                    <button className="setup-generate-button" type="button" onClick={() => onAction('generate-competitors')} disabled={Boolean(loading) || competitorLimitReached}>
+                      Confirm analysis &amp; discover competitors
+                    </button>
+                  ) : !hasPrompts ? (
+                    <button className="setup-generate-button" type="button" onClick={() => onAction('generate-prompts')} disabled={Boolean(loading) || promptLimitReached}>
+                      Confirm competitors &amp; generate prompts
+                    </button>
+                  ) : !hasChecks ? (
+                    <button className="setup-generate-button" type="button" onClick={() => onAction('run-checks')} disabled={Boolean(loading)}>
+                      Confirm prompts &amp; generate overview
+                    </button>
+                  ) : null}
                 </div>
-              ))}
-            </div>
-          </article>
-        </div>
-
-        <section className="setup-review-grid single-step">
-          {activeStep === 'analysis' ? (
-          <article className="setup-review-card focus-card">
-            <div className="setup-review-head">
-              <p className="eyebrow">Analysis review</p>
-              <span>{hasAnalysis ? 'Ready to confirm' : 'Not generated'}</span>
-            </div>
-            <h2>{analysis?.detected_industry || 'Business analysis'}</h2>
-            <p>{analysis?.business_summary || 'Generate the business analysis first. You will review it before discovering competitors.'}</p>
-            {hasAnalysis ? (
-              <div className="setup-analysis-details">
-                <div>
-                  <span>Detected services</span>
-                  <strong>{analysis.detected_services || analysis.main_services || 'Not available'}</strong>
-                </div>
-                <div>
-                  <span>Target audience</span>
-                  <strong>{analysis.target_audience_summary || analysis.target_audience || 'Not available'}</strong>
-                </div>
-                <div>
-                  <span>Service area</span>
-                  <strong>{analysis.service_area_summary || analysis.service_area || 'Not available'}</strong>
-                </div>
-                <div>
-                  <span>Positioning</span>
-                  <strong>{analysis.positioning_summary || 'Not available'}</strong>
-                </div>
-              </div>
-            ) : null}
-          </article>
-          ) : null}
-
-          {activeStep === 'competitors' ? (
-          <article className="setup-review-card focus-card">
-            <div className="setup-review-head">
-              <p className="eyebrow">Competitors review</p>
-              <span>{competitorLimit ? `${competitorLimit.used}/${competitorLimit.limit} competitors` : `${competitors.length} competitors`}</span>
-            </div>
-            {competitorLimitReached ? <div className="limit-mini-note">Competitor limit reached. Ask a Developer to increase the limit.</div> : null}
-            <div className="setup-review-list">
-              {competitors.map((competitor) => (
-                <div key={competitor.id}>
-                  <strong>{competitor.competitor_name}</strong>
-                  <small>{competitor.website_url || 'No URL'}</small>
-                  <button type="button" onClick={() => onAction('competitors/remove', { competitorId: competitor.id })} disabled={Boolean(loading)}>Remove</button>
-                </div>
-              ))}
-            </div>
-            {hasAnalysis ? (
-              <form className="setup-mini-form" onSubmit={addCompetitor}>
-                <input placeholder="Competitor name" value={competitorForm.competitorName || ''} onChange={(event) => setCompetitorForm((current) => ({ ...current, competitorName: event.target.value }))} />
-                <input placeholder="Website URL" value={competitorForm.websiteUrl || ''} onChange={(event) => setCompetitorForm((current) => ({ ...current, websiteUrl: event.target.value }))} />
-                <button type="submit" disabled={Boolean(loading) || competitorLimitReached}>Add competitor</button>
-              </form>
-            ) : null}
-          </article>
-          ) : null}
-
-          {activeStep === 'prompts' ? (
-          <article className="setup-review-card wide focus-card">
-            <div className="setup-review-head">
-              <p className="eyebrow">Prompt review</p>
-              <span>{promptLimit ? `${promptLimit.used}/${promptLimit.limit} prompts` : `${prompts.length} prompts`}</span>
-            </div>
-            {promptLimitReached ? <div className="limit-mini-note">Prompt limit reached. Ask a Developer to increase the limit.</div> : null}
-            <div className="setup-review-list prompts">
-              {prompts.map((prompt) => (
-                <div key={prompt.id}>
-                  <strong>{prompt.prompt_text}</strong>
-                  <small>{prompt.prompt_category || 'Prompt'} · {prompt.prompt_intent || 'Intent'}</small>
-                  <button type="button" onClick={() => onAction('prompts/remove', { promptId: prompt.id })} disabled={Boolean(loading)}>Remove</button>
-                </div>
-              ))}
-            </div>
-            {hasCompetitors ? (
-              <form className="setup-mini-form prompt-form" onSubmit={addPrompt}>
-                <input placeholder="Add a prompt" value={promptForm.promptText || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptText: event.target.value }))} />
-                <input placeholder="Category" value={promptForm.promptCategory || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptCategory: event.target.value }))} />
-                <input placeholder="Intent" value={promptForm.promptIntent || ''} onChange={(event) => setPromptForm((current) => ({ ...current, promptIntent: event.target.value }))} />
-                <button type="submit" disabled={Boolean(loading) || promptLimitReached}>Add prompt</button>
-              </form>
-            ) : null}
-          </article>
-          ) : null}
-
-          {activeStep === 'checks' ? (
-            <article className="setup-review-card wide focus-card setup-checks-ready-card">
-              <div className="setup-review-head">
-                <p className="eyebrow">Overview generation</p>
-                <span>{prompts.length} prompts ready</span>
-              </div>
-              <h2>Ready to build your first overview</h2>
-              <p>
-                Aimate will now send each saved prompt to every configured AI provider for the first run.
-                This first setup run does not require Developer refresh permission. Future regenerations will follow
-                the limits and permissions configured in Developer Admin.
-              </p>
-              <div className="setup-check-provider-grid">
-                <span>Aimate</span>
-                <span>ChatGPT if connected</span>
-                <span>Claude if connected</span>
-                <span>Perplexity if connected</span>
-              </div>
-            </article>
-          ) : null}
-        </section>
+              ) : (
+                <div className="info-notice">Your role can view the platform after an authorized user generates setup data.</div>
+              )}
+            </>
+          )}
+        </article>
       </section>
     </main>
   );
@@ -639,6 +618,11 @@ function loadingLabel(action) {
 
 function setupLoadingDetails(action) {
   const details = {
+    generate: {
+      title: 'Building your full workspace',
+      text: 'Generating business analysis, competitors, prompts, and the first AI visibility check in one pass. This covers everything before your dashboard is ready.',
+      providers: ['Aimate', 'ChatGPT', 'Claude', 'Perplexity']
+    },
     analysis: {
       title: 'Business analysis is the next step',
       text: 'Aimate will read the saved company basics and generate the business profile before anything else.',
