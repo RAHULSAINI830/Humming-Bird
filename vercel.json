@@ -8,6 +8,10 @@
   ],
   "builds": [
     {
+      "src": "api/contact.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "api/index.js",
       "use": "@vercel/node"
     },
@@ -20,6 +24,10 @@
     }
   ],
   "routes": [
+    {
+      "src": "/api/contact",
+      "dest": "api/contact.js"
+    },
     {
       "src": "/favicon.ico",
       "dest": "frontend/favicon.ico"
