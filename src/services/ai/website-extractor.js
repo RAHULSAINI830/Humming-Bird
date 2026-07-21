@@ -2,6 +2,8 @@ const DEFAULT_TIMEOUT = 15000;
 const MAX_WEBSITE_TEXT_LENGTH = 12000;
 const MAX_ASSET_TEXT_LENGTH = 10000;
 const MAX_SCRIPT_ASSETS = 45;
+const SCRIPT_EXTRACTION_BUDGET_MS = 12000;
+const SCRIPT_FETCH_CONCURRENCY = 6;
 
 function normalizeWebsiteUrl(url) {
   const rawUrl = String(url || '').trim();
@@ -187,34 +189,48 @@ async function fetchPublicText(url) {
 }
 
 async function extractJavascriptRenderedText(html, pageUrl) {
-  const queue = extractScriptUrls(html, pageUrl).sort((a, b) => {
-    const aUseful = isUsefulJavascriptAsset(a) ? 0 : 1;
-    const bUseful = isUsefulJavascriptAsset(b) ? 0 : 1;
-    return aUseful - bUseful;
-  });
-  const seen = new Set(queue);
+  // A JS-heavy marketing site can easily ship 20-40+ script chunks. Fetching
+  // them one at a time (each with its own timeout) had no overall cap, so a
+  // single slow site could stall business analysis for minutes. Fetch with
+  // bounded concurrency and a hard wall-clock budget so this step always
+  // finishes quickly regardless of how many scripts a site has.
+  const initialQueue = extractScriptUrls(html, pageUrl)
+    .sort((a, b) => {
+      const aUseful = isUsefulJavascriptAsset(a) ? 0 : 1;
+      const bUseful = isUsefulJavascriptAsset(b) ? 0 : 1;
+      return aUseful - bUseful;
+    })
+    .slice(0, MAX_SCRIPT_ASSETS);
+
+  const seen = new Set(initialQueue);
+  const queue = [...initialQueue];
   const humanStrings = [];
+  const deadline = Date.now() + SCRIPT_EXTRACTION_BUDGET_MS;
 
-  for (let index = 0; index < queue.length && index < MAX_SCRIPT_ASSETS; index += 1) {
-    const scriptUrl = queue[index];
+  async function worker() {
+    while (queue.length && Date.now() < deadline) {
+      const scriptUrl = queue.shift();
 
-    try {
-      const javascript = await fetchPublicText(scriptUrl);
+      try {
+        const javascript = await fetchPublicText(scriptUrl);
 
-      if (isUsefulJavascriptAsset(scriptUrl)) {
-        humanStrings.push(...extractHumanTextFromJavascript(javascript));
-      }
-
-      for (const assetUrl of extractAssetUrlsFromJavascript(javascript, scriptUrl)) {
-        if (isUsefulJavascriptAsset(assetUrl) && !seen.has(assetUrl) && queue.length < MAX_SCRIPT_ASSETS) {
-          seen.add(assetUrl);
-          queue.push(assetUrl);
+        if (isUsefulJavascriptAsset(scriptUrl)) {
+          humanStrings.push(...extractHumanTextFromJavascript(javascript));
         }
+
+        for (const assetUrl of extractAssetUrlsFromJavascript(javascript, scriptUrl)) {
+          if (isUsefulJavascriptAsset(assetUrl) && !seen.has(assetUrl) && seen.size < MAX_SCRIPT_ASSETS) {
+            seen.add(assetUrl);
+            queue.push(assetUrl);
+          }
+        }
+      } catch {
+        // Ignore individual asset failures. Many modern sites split optional chunks.
       }
-    } catch {
-      // Ignore individual asset failures. Many modern sites split optional chunks.
     }
   }
+
+  await Promise.all(Array.from({ length: SCRIPT_FETCH_CONCURRENCY }, worker));
 
   return unique(humanStrings).join('\n').slice(0, MAX_ASSET_TEXT_LENGTH);
 }
